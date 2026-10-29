@@ -14,6 +14,8 @@ import { invalidateCard } from "~/utils/cardInvalidation";
 
 // Impeesa: creates a workspace-wide client (see db/schema/clients.ts).
 // When cardPublicId is given, the new client is also assigned to that card.
+// Otherwise its publicId is left in modal state NEW_CLIENT_CREATED, so the
+// new card form underneath can pick it up.
 export function ClientForm({
   workspacePublicId,
   cardPublicId,
@@ -21,7 +23,7 @@ export function ClientForm({
   workspacePublicId: string;
   cardPublicId?: string;
 }) {
-  const { closeModal } = useModal();
+  const { closeModal, setModalState } = useModal();
   const { showPopup } = usePopup();
   const utils = api.useUtils();
 
@@ -50,6 +52,8 @@ export function ClientForm({
           cardPublicId,
           clientPublicId: newClient.publicId,
         });
+      } else {
+        setModalState("NEW_CLIENT_CREATED", newClient.publicId);
       }
       closeModal();
     },

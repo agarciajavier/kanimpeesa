@@ -39,6 +39,7 @@ import type { BoardView } from "./components/ViewToggle";
 import type { DragData } from "./dnd/types";
 import type { BoardCard, BoardList } from "./types";
 import Button from "~/components/Button";
+import { ClientForm } from "~/components/ClientForm";
 import { DeleteLabelConfirmation } from "~/components/DeleteLabelConfirmation";
 import { LabelForm } from "~/components/LabelForm";
 import Modal from "~/components/modal";
@@ -752,6 +753,13 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
           isVisible={isOpen && modalContentType === "NEW_LABEL"}
         >
           <LabelForm boardPublicId={boardId ?? ""} refetch={refetchBoard} />
+        </Modal>
+
+        <Modal
+          modalSize="sm"
+          isVisible={isOpen && modalContentType === "NEW_CLIENT"}
+        >
+          <ClientForm workspacePublicId={boardData?.workspace.publicId ?? ""} />
         </Modal>
 
         <Modal

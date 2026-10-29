@@ -33,6 +33,8 @@ import { formatMemberDisplayName, getAvatarUrl } from "~/utils/helpers";
 type NewCardFormInput = NewCardInput & {
   isCreateAnotherEnabled: boolean;
   dueDate?: Date | null;
+  // Impeesa: card.create doesn't take a client; it's set right after.
+  clientPublicId?: string | null;
 };
 
 interface QueryParams {
@@ -75,6 +77,7 @@ export function NewCardForm({
       isCreateAnotherEnabled: false,
       position: "start",
       dueDate: initialDueDate,
+      clientPublicId: null,
     },
     resetOnClose: true,
   });
@@ -91,6 +94,7 @@ export function NewCardForm({
   const title = watch("title");
   const description = watch("description");
   const dueDate = watch("dueDate");
+  const clientPublicId = watch("clientPublicId") ?? null;
   const [isDateSelectorOpen, setIsDateSelectorOpen] = useState(false);
 
   // Files queued for upload after the card is created. Kept outside of
@@ -139,6 +143,23 @@ export function NewCardForm({
     }
   }, [boardData?.labels, labelPublicIds, modalStates.NEW_LABEL_CREATED]);
 
+  const workspacePublicId = boardData?.workspace.publicId ?? "";
+  const { data: clients } = api.clients.all.useQuery(
+    { workspacePublicId },
+    { enabled: workspacePublicId.length >= 12 },
+  );
+
+  // this selects a client created from this form
+  useEffect(() => {
+    const newClientId = modalStates.NEW_CLIENT_CREATED;
+    if (newClientId !== undefined) {
+      setValue("clientPublicId", newClientId);
+      clearModalState("NEW_CLIENT_CREATED");
+    }
+  }, [modalStates.NEW_CLIENT_CREATED]);
+
+  const setCardClient = api.clients.setForCard.useMutation();
+
   const createCard = api.card.create.useMutation({
     onMutate: async (args) => {
       await utils.board.byId.cancel();
@@ -160,7 +181,9 @@ export function NewCardForm({
               comments: [],
               checklists: [],
               attachments: [],
-              client: null,
+              client:
+                clients?.find((client) => client.publicId === clientPublicId) ??
+                null,
               labels: oldBoard.labels.filter((label) =>
                 args.labelPublicIds.includes(label.publicId),
               ),
@@ -218,6 +241,8 @@ export function NewCardForm({
           isCreateAnotherEnabled,
           position,
           dueDate: null,
+          // the next card is usually for the same client
+          clientPublicId,
         };
         reset(newFormState);
         saveFormState(newFormState);
@@ -323,6 +348,22 @@ export function NewCardForm({
       return;
     }
 
+    if (data.clientPublicId) {
+      try {
+        await setCardClient.mutateAsync({
+          cardPublicId: newCard.publicId,
+          clientPublicId: data.clientPublicId,
+        });
+      } catch {
+        showPopup({
+          header: t`Unable to update client`,
+          message: t`The card was created, but its client could not be set.`,
+          icon: "error",
+        });
+      }
+      await utils.board.byId.invalidate(queryParams);
+    }
+
     if (filesToUpload.length > 0) {
       const failedCount = await uploadAttachments(
         newCard.publicId,
@@ -368,6 +409,16 @@ export function NewCardForm({
       setValue("labelPublicIds", newLabelPublicIds);
     }
   };
+
+  const formattedClients =
+    clients?.map((client) => ({
+      key: client.publicId,
+      value: client.name,
+      leftIcon: <LabelIcon colourCode={client.colourCode} />,
+      selected: client.publicId === clientPublicId,
+    })) ?? [];
+
+  const selectedClient = formattedClients.find((item) => item.selected);
 
   const selectedList = formattedLists.find((item) => item.selected);
 
@@ -569,6 +620,33 @@ export function NewCardForm({
               </div>
             </CheckboxDropdown>
           </div>
+          {!isTemplate && (
+            <div className="w-fit">
+              <CheckboxDropdown
+                items={formattedClients}
+                handleSelect={(_groupKey, item) =>
+                  // picking the selected client again clears it
+                  setValue(
+                    "clientPublicId",
+                    item.key === clientPublicId ? null : item.key,
+                  )
+                }
+                handleCreate={() => openModal("NEW_CLIENT")}
+                createNewItemLabel={t`Create new client`}
+              >
+                <div className="flex h-full w-full items-center rounded-[5px] border-[1px] border-light-600 bg-light-200 px-2 py-1 text-left text-xs text-light-800 hover:bg-light-300 dark:border-dark-600 dark:bg-dark-400 dark:text-dark-1000 dark:hover:bg-dark-500">
+                  {selectedClient ? (
+                    <div className="flex items-center gap-1">
+                      {selectedClient.leftIcon}
+                      {selectedClient.value}
+                    </div>
+                  ) : (
+                    t`Client`
+                  )}
+                </div>
+              </CheckboxDropdown>
+            </div>
+          )}
           <div className="relative w-fit">
             <button
               type="button"
