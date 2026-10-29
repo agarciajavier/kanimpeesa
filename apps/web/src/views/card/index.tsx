@@ -35,6 +35,7 @@ import ActivityList from "./components/ActivityList";
 import { ActivitySortOrderToggle } from "./components/ActivitySortOrderToggle";
 import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
 import { AttachmentUpload } from "./components/AttachmentUpload";
+import CardFields from "./components/CardFields";
 import Checklists from "./components/Checklists";
 import ClientSelector from "./components/ClientSelector";
 import { DeleteCardConfirmation } from "./components/DeleteCardConfirmation";
@@ -157,6 +158,9 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
             disabled={!canEdit}
           />
         </div>
+      )}
+      {!isTemplate && (
+        <CardFields cardPublicId={cardId ?? ""} disabled={!canEdit} />
       )}
       {!isTemplate && (
         <div className="mb-4 flex w-full flex-row">

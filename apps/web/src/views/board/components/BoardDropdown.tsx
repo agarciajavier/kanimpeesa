@@ -4,6 +4,7 @@ import {
   HiArrowRightOnRectangle,
   HiEllipsisHorizontal,
   HiLink,
+  HiOutlineBolt,
   HiOutlineDocumentDuplicate,
   HiOutlineStar,
   HiOutlineTrash,
@@ -92,6 +93,16 @@ export default function BoardDropdown({
   const isArchiveActionPending = updateBoard.isPending;
 
   const items = [
+    // Impeesa: custom fields and automations of the board.
+    ...(!isTemplate
+      ? [
+          {
+            label: "Campos y automatizaciones",
+            action: () => void router.push(`/automations/${boardPublicId}`),
+            icon: <HiOutlineBolt className="h-[16px] w-[16px] text-dark-900" />,
+          },
+        ]
+      : []),
     ...(!isTemplate && canCreateBoard
       ? [
           {

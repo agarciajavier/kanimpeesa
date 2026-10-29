@@ -17,3 +17,4 @@ export * from "./notifications";
 export * from "./webhooks";
 export * from "./clients";
 export * from "./checklistTemplates";
+export * from "./boardFields";
