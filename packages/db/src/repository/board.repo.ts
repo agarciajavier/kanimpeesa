@@ -272,6 +272,13 @@ export const getByPublicId = async (
                   },
                 },
               },
+              client: {
+                columns: {
+                  publicId: true,
+                  name: true,
+                  colourCode: true,
+                },
+              },
               members: {
                 with: {
                   member: {

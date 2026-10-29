@@ -160,6 +160,7 @@ export function NewCardForm({
               comments: [],
               checklists: [],
               attachments: [],
+              client: null,
               labels: oldBoard.labels.filter((label) =>
                 args.labelPublicIds.includes(label.publicId),
               ),

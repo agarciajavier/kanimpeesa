@@ -621,6 +621,13 @@ export const getWithListAndMembersByPublicId = async (
           },
         },
       },
+      client: {
+        columns: {
+          publicId: true,
+          name: true,
+          colourCode: true,
+        },
+      },
       attachments: {
         columns: {
           publicId: true,

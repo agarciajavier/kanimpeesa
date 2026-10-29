@@ -24,10 +24,13 @@ const Card = ({
   comments,
   attachments,
   dueDate,
+  client,
 }: {
   title: string;
   ticketNumber?: string | null;
   labels: { name: string; colourCode: string | null }[];
+  // Impeesa: see db/schema/clients.ts
+  client?: { name: string; colourCode: string | null } | null;
   members: {
     publicId: string;
     email: string;
@@ -72,6 +75,12 @@ const Card = ({
       {ticketNumber && (
         <span className="mb-1 text-xs text-light-700 dark:text-dark-800">
           {ticketNumber}
+        </span>
+      )}
+      {client && (
+        <span className="mb-1 flex items-center gap-1 text-xs font-medium text-light-900 dark:text-dark-900">
+          <LabelIcon colourCode={client.colourCode} />
+          {client.name}
         </span>
       )}
       <span className="break-words">{title}</span>

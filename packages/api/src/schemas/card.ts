@@ -51,6 +51,7 @@ export const cardDetailSchema = z.object({
   dueDate: z.date().nullable(),
   createdBy: z.string().nullable(),
   labels: z.array(labelSchema),
+  client: labelSchema.nullable(),
   attachments: z.array(
     z.object({
       publicId: z.string(),

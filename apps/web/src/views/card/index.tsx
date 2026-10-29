@@ -30,6 +30,8 @@ import { getBoardReturnUrl } from "~/utils/board-return-url";
 import { invalidateCard } from "~/utils/cardInvalidation";
 import { formatMemberDisplayName, getAvatarUrl } from "~/utils/helpers";
 import { DeleteLabelConfirmation } from "../../components/DeleteLabelConfirmation";
+import { ClientForm } from "~/components/ClientForm";
+import ClientSelector from "./components/ClientSelector";
 import ActivityList from "./components/ActivityList";
 import { ActivitySortOrderToggle } from "./components/ActivitySortOrderToggle";
 import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
@@ -144,6 +146,18 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
           disabled={!canEdit}
         />
       </div>
+      {!isTemplate && (
+        <div className="mb-4 flex w-full flex-row">
+          <p className="my-2 mb-2 w-[100px] text-sm font-medium">{t`Client`}</p>
+          <ClientSelector
+            cardPublicId={cardId ?? ""}
+            workspacePublicId={board?.workspace.publicId ?? ""}
+            selectedClient={card?.client ?? null}
+            isLoading={!card}
+            disabled={!canEdit}
+          />
+        </div>
+      )}
       {!isTemplate && (
         <div className="mb-4 flex w-full flex-row">
           <p className="my-2 mb-2 w-[100px] text-sm font-medium">{t`Members`}</p>
@@ -554,6 +568,16 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
             isVisible={isOpen && modalContentType === "NEW_LABEL"}
           >
             <LabelForm boardPublicId={boardId ?? ""} refetch={refetchCard} />
+          </Modal>
+
+          <Modal
+            modalSize="sm"
+            isVisible={isOpen && modalContentType === "NEW_CLIENT"}
+          >
+            <ClientForm
+              workspacePublicId={cardWorkspacePublicId ?? ""}
+              cardPublicId={cardId ?? ""}
+            />
           </Modal>
 
           <Modal

@@ -15,6 +15,7 @@ import {
 
 import { boards } from "./boards";
 import { checklists } from "./checklists";
+import { clients } from "./clients";
 import { imports } from "./imports";
 import { labels } from "./labels";
 import { lists } from "./lists";
@@ -80,9 +81,15 @@ export const cards = pgTable(
       () => imports.id,
     ),
     dueDate: timestamp("dueDate"),
+    // Impeesa: see ./clients.ts
+    clientId: bigint("clientId", { mode: "number" }).references(
+      () => clients.id,
+      { onDelete: "set null" },
+    ),
   },
   (table) => [
     index("card_list_number_idx").on(table.listId, table.cardNumber),
+    index("card_client_idx").on(table.clientId),
   ],
 ).enableRLS();
 
@@ -113,6 +120,11 @@ export const cardsRelations = relations(cards, ({ one, many }) => ({
   activities: many(cardActivities),
   checklists: many(checklists),
   attachments: many(cardAttachments),
+  client: one(clients, {
+    fields: [cards.clientId],
+    references: [clients.id],
+    relationName: "cardsClient",
+  }),
 }));
 
 export const cardActivities = pgTable("card_activity", {
