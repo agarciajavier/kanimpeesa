@@ -44,7 +44,8 @@ COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=pruner /app/out/json/ .
 
 ENV CI=true
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
+# Impeesa: Railway exige que el id de cada cache empiece con s/<id del servicio Web>-.
+RUN --mount=type=cache,id=s/4e73402c-8d2a-4351-a3e7-6fcdbbeee850-pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile
 
 # ============================================
@@ -64,8 +65,8 @@ COPY --from=pruner /app/out/full/ .
 ENV NEXT_PUBLIC_USE_STANDALONE_OUTPUT=true
 ENV CI=true
 
-RUN --mount=type=cache,id=next-cache,target=/app/apps/web/.next/cache,sharing=locked \
-    --mount=type=cache,id=turbo-cache,target=/app/.turbo,sharing=locked \
+RUN --mount=type=cache,id=s/4e73402c-8d2a-4351-a3e7-6fcdbbeee850-next-cache,target=/app/apps/web/.next/cache,sharing=locked \
+    --mount=type=cache,id=s/4e73402c-8d2a-4351-a3e7-6fcdbbeee850-turbo-cache,target=/app/.turbo,sharing=locked \
     NEXT_PUBLIC_APP_VERSION="$APP_VERSION" pnpm build --filter=@kan/web
 
 # ============================================
@@ -80,7 +81,7 @@ WORKDIR /db
 COPY packages/db/drizzle.config.ts ./drizzle.config.ts
 COPY packages/db/migrations/ ./migrations/
 
-RUN --mount=type=cache,id=npm-cache,target=/root/.npm,sharing=locked \
+RUN --mount=type=cache,id=s/4e73402c-8d2a-4351-a3e7-6fcdbbeee850-npm-cache,target=/root/.npm,sharing=locked \
     npm init -y && \
     npm install drizzle-kit drizzle-orm pg --save-exact && \
     # Strip unnecessary files from node_modules
