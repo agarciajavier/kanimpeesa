@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import { t } from "@lingui/core/macro";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { HiXMark } from "react-icons/hi2";
+import { HiChevronDown, HiChevronRight, HiXMark } from "react-icons/hi2";
 import { IoChevronForwardSharp } from "react-icons/io5";
 
 import { authClient } from "@kan/auth/client";
@@ -209,8 +209,12 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
     ? router.query.cardId[0]
     : router.query.cardId;
 
+  // Impeesa: the activity starts collapsed on every card.
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+
   useEffect(() => {
     setRecentCommentPublicIds([]);
+    setIsActivityOpen(false);
   }, [cardId]);
 
   const {
@@ -514,39 +518,55 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                   )}
                   <div className="border-t-[1px] border-light-300 pt-12 dark:border-dark-300">
                     <header className="flex items-center justify-between pb-4">
-                      <h2 className="text-md font-medium text-light-1000 dark:text-dark-1000">
-                        {t`Activity`}
-                      </h2>
-                      <ActivitySortOrderToggle
-                        order={activitySortOrder}
-                        onChange={setActivitySortOrder}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsActivityOpen(!isActivityOpen)}
+                        aria-expanded={isActivityOpen}
+                        className="text-md flex items-center gap-1 rounded-md font-medium text-light-1000 hover:opacity-80 dark:text-dark-1000"
+                      >
+                        {isActivityOpen ? (
+                          <HiChevronDown size={16} />
+                        ) : (
+                          <HiChevronRight size={16} />
+                        )}
+                        <h2>{t`Activity`}</h2>
+                      </button>
+                      {isActivityOpen && (
+                        <ActivitySortOrderToggle
+                          order={activitySortOrder}
+                          onChange={setActivitySortOrder}
+                        />
+                      )}
                     </header>
-                    {!isTemplate && activitySortOrder === "newest" && (
-                      <div className="mb-2">
-                        <NewCommentForm
-                          cardPublicId={cardId}
-                          workspaceMembers={editorWorkspaceMembers}
-                          onCommentCreated={handleCommentCreated}
-                        />
-                      </div>
-                    )}
-                    <div>
-                      <ActivityList
-                        cardPublicId={cardId}
-                        isLoading={!card}
-                        order={activitySortOrder}
-                        recentCommentPublicIds={recentCommentPublicIds}
-                      />
-                    </div>
-                    {!isTemplate && activitySortOrder === "oldest" && (
-                      <div className="mt-6">
-                        <NewCommentForm
-                          cardPublicId={cardId}
-                          workspaceMembers={editorWorkspaceMembers}
-                          onCommentCreated={handleCommentCreated}
-                        />
-                      </div>
+                    {isActivityOpen && (
+                      <>
+                        {!isTemplate && activitySortOrder === "newest" && (
+                          <div className="mb-2">
+                            <NewCommentForm
+                              cardPublicId={cardId}
+                              workspaceMembers={editorWorkspaceMembers}
+                              onCommentCreated={handleCommentCreated}
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <ActivityList
+                            cardPublicId={cardId}
+                            isLoading={!card}
+                            order={activitySortOrder}
+                            recentCommentPublicIds={recentCommentPublicIds}
+                          />
+                        </div>
+                        {!isTemplate && activitySortOrder === "oldest" && (
+                          <div className="mt-6">
+                            <NewCommentForm
+                              cardPublicId={cardId}
+                              workspaceMembers={editorWorkspaceMembers}
+                              onCommentCreated={handleCommentCreated}
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </>
@@ -642,7 +662,10 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
             modalSize="sm"
             isVisible={isOpen && modalContentType === "ADD_CHECKLIST"}
           >
-            <NewChecklistForm cardPublicId={cardId} />
+            <NewChecklistForm
+              cardPublicId={cardId}
+              workspacePublicId={cardWorkspacePublicId ?? ""}
+            />
           </Modal>
 
           <Modal

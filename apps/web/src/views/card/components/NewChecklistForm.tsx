@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { HiXMark } from "react-icons/hi2";
+import { HiOutlineTrash, HiXMark } from "react-icons/hi2";
 
 import { generateUID } from "@kan/shared/utils";
 
@@ -17,7 +17,13 @@ interface NewChecklistFormInput {
   cardPublicId: string;
 }
 
-export function NewChecklistForm({ cardPublicId }: { cardPublicId: string }) {
+export function NewChecklistForm({
+  cardPublicId,
+  workspacePublicId,
+}: {
+  cardPublicId: string;
+  workspacePublicId: string;
+}) {
   const { closeModal, setModalState } = useModal();
   const { showPopup } = usePopup();
 
@@ -88,6 +94,31 @@ export function NewChecklistForm({ cardPublicId }: { cardPublicId: string }) {
     },
   });
 
+  // Impeesa: checklist templates (see db/schema/checklistTemplates.ts).
+  const templates = api.checklistTemplates.all.useQuery(
+    { workspacePublicId },
+    { enabled: workspacePublicId.length >= 12 },
+  );
+
+  const applyTemplate = api.checklistTemplates.apply.useMutation({
+    onError: () => {
+      showPopup({
+        header: t`Unable to create checklist`,
+        message: t`Please try again later, or contact customer support.`,
+        icon: "error",
+      });
+    },
+    onSettled: async () => {
+      await invalidateCard(utils, cardPublicId);
+    },
+  });
+
+  const deleteTemplate = api.checklistTemplates.delete.useMutation({
+    onSettled: async () => {
+      await utils.checklistTemplates.all.invalidate({ workspacePublicId });
+    },
+  });
+
   useEffect(() => {
     const nameElement: HTMLElement | null =
       document.querySelector<HTMLElement>("#checklist-name");
@@ -136,6 +167,60 @@ export function NewChecklistForm({ cardPublicId }: { cardPublicId: string }) {
             }
           }}
         />
+
+        {!!templates.data?.length && (
+          <div className="mt-5">
+            <p className="mb-2 text-xs font-medium text-neutral-900 dark:text-dark-1000">
+              O usá una plantilla
+            </p>
+            <div className="max-h-[220px] space-y-1 overflow-y-auto">
+              {templates.data.map((template) => (
+                <div
+                  key={template.publicId}
+                  className="group flex items-center rounded-md ring-1 ring-inset ring-light-600 hover:bg-light-200 dark:ring-dark-700 dark:hover:bg-dark-300"
+                >
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-between px-3 py-2 text-left text-sm text-neutral-900 dark:text-dark-1000"
+                    disabled={applyTemplate.isPending}
+                    onClick={() => {
+                      closeModal();
+                      applyTemplate.mutate({
+                        cardPublicId,
+                        templatePublicId: template.publicId,
+                      });
+                    }}
+                  >
+                    <span className="truncate">{template.name}</span>
+                    <span className="ml-2 flex-shrink-0 text-xs text-light-900 dark:text-dark-800">
+                      {template.items.length}{" "}
+                      {template.items.length === 1 ? "ítem" : "ítems"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Borrar plantilla"
+                    title="Borrar plantilla"
+                    className="mr-1 rounded p-1 text-light-900 opacity-0 group-hover:opacity-100 hover:bg-light-300 dark:text-dark-800 dark:hover:bg-dark-400"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `¿Borrar la plantilla "${template.name}"? Los checklists ya creados no cambian.`,
+                        )
+                      ) {
+                        deleteTemplate.mutate({
+                          templatePublicId: template.publicId,
+                        });
+                      }
+                    }}
+                  >
+                    <HiOutlineTrash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <div className="mt-12 flex items-center justify-end border-t border-light-600 px-5 pb-5 pt-5 dark:border-dark-600">
         <div>

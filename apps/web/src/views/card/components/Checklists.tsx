@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { t } from "@lingui/core/macro";
 import { useMemo } from "react";
-import { HiPlus, HiXMark } from "react-icons/hi2";
+import { HiOutlineBookmark, HiPlus, HiXMark } from "react-icons/hi2";
 
 import CircularProgress from "~/components/CircularProgress";
 import { useModal } from "~/providers/modal";
@@ -97,6 +97,27 @@ export default function Checklists({
     },
     onSettled: async () => {
       await utils.card.byId.invalidate({ cardPublicId });
+    },
+  });
+
+  // Impeesa: checklist templates (see db/schema/checklistTemplates.ts).
+  const saveAsTemplate = api.checklistTemplates.saveFromChecklist.useMutation({
+    onSuccess: async (template) => {
+      await utils.checklistTemplates.all.invalidate();
+      showPopup({
+        header: template.replaced
+          ? "Plantilla actualizada"
+          : "Plantilla guardada",
+        message: `"${template.name}" ya está disponible al agregar un checklist.`,
+        icon: "success",
+      });
+    },
+    onError: () => {
+      showPopup({
+        header: "No se pudo guardar la plantilla",
+        message: t`Please try again later, or contact customer support.`,
+        icon: "error",
+      });
     },
   });
 
@@ -193,6 +214,22 @@ export default function Checklists({
                           }
                         >
                           <HiXMark size={16} />
+                        </button>
+                        <button
+                          aria-label="Guardar como plantilla"
+                          title="Guardar como plantilla"
+                          disabled={
+                            saveAsTemplate.isPending ||
+                            checklist.publicId.startsWith("PLACEHOLDER")
+                          }
+                          className="rounded-md p-1 text-light-900 hover:bg-light-100 dark:text-dark-700 dark:hover:bg-dark-100"
+                          onClick={() =>
+                            saveAsTemplate.mutate({
+                              checklistPublicId: checklist.publicId,
+                            })
+                          }
+                        >
+                          <HiOutlineBookmark size={16} />
                         </button>
                         <button
                           aria-label={t`Add checklist item`}

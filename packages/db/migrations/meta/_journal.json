@@ -267,6 +267,13 @@
       "when": 1793299885174,
       "tag": "20261029185125_AddClientStatus",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793300154783,
+      "tag": "20261029185554_AddChecklistTemplates",
+      "breakpoints": true
     }
   ]
 }
