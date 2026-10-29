@@ -151,7 +151,7 @@ export const checklistTemplateRouter = createTRPCRouter({
 
       return { success: true };
     }),
-  apply: protectedProcedure
+  applyToCard: protectedProcedure
     .meta({
       openapi: {
         summary: "Add a checklist from a template",

@@ -100,7 +100,7 @@ export function NewChecklistForm({
     { enabled: workspacePublicId.length >= 12 },
   );
 
-  const applyTemplate = api.checklistTemplates.apply.useMutation({
+  const applyTemplate = api.checklistTemplates.applyToCard.useMutation({
     onError: () => {
       showPopup({
         header: t`Unable to create checklist`,
