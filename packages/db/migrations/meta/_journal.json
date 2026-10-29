@@ -260,6 +260,13 @@
       "when": 1793287723023,
       "tag": "20261029152843_AddClients",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793299885174,
+      "tag": "20261029185125_AddClientStatus",
+      "breakpoints": true
     }
   ]
 }

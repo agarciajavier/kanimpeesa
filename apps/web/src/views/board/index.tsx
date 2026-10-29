@@ -764,6 +764,16 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
 
         <Modal
           modalSize="sm"
+          isVisible={isOpen && modalContentType === "EDIT_CLIENT"}
+        >
+          <ClientForm
+            workspacePublicId={boardData?.workspace.publicId ?? ""}
+            isEdit
+          />
+        </Modal>
+
+        <Modal
+          modalSize="sm"
           isVisible={isOpen && modalContentType === "EDIT_LABEL"}
         >
           <LabelForm

@@ -95,6 +95,11 @@ export default function ClientSelector({
                 client.key === selectedClient?.publicId ? null : client.key,
             });
           }}
+          handleEdit={
+            disabled
+              ? undefined
+              : (clientPublicId) => openModal("EDIT_CLIENT", clientPublicId)
+          }
           handleCreate={disabled ? undefined : () => openModal("NEW_CLIENT")}
           createNewItemLabel={t`Create new client`}
           ariaLabel={t`Client`}

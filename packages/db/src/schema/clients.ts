@@ -3,11 +3,14 @@ import {
   bigint,
   bigserial,
   index,
+  pgEnum,
   pgTable,
   timestamp,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+import { clientStatuses } from "@kan/shared/constants";
 
 import { cards } from "./cards";
 import { users } from "./users";
@@ -15,6 +18,9 @@ import { workspaces } from "./workspaces";
 
 // Impeesa: clients are shared by every board in a workspace, unlike labels,
 // which belong to a single board. A card has at most one client.
+// colourCode always follows status (see clientStatusDetails).
+export const clientStatusEnum = pgEnum("client_status", clientStatuses);
+
 export const clients = pgTable(
   "client",
   {
@@ -22,6 +28,7 @@ export const clients = pgTable(
     publicId: varchar("publicId", { length: 12 }).notNull().unique(),
     name: varchar("name", { length: 255 }).notNull(),
     colourCode: varchar("colourCode", { length: 12 }),
+    status: clientStatusEnum("status").notNull().default("starting"),
     workspaceId: bigint("workspaceId", { mode: "number" })
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),

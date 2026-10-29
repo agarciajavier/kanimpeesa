@@ -4,6 +4,7 @@ import { z } from "zod";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as clientRepo from "@kan/db/repository/client.repo";
 import * as workspaceRepo from "@kan/db/repository/workspace.repo";
+import { clientStatuses } from "@kan/shared/constants";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { assertCanEdit, assertPermission } from "../utils/permissions";
@@ -14,6 +15,7 @@ const clientSchema = z.object({
   publicId: z.string(),
   name: z.string(),
   colourCode: z.string().nullable(),
+  status: z.enum(clientStatuses),
 });
 
 export const clientRouter = createTRPCRouter({
@@ -68,7 +70,7 @@ export const clientRouter = createTRPCRouter({
       z.object({
         workspacePublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
-        colourCode: z.string().length(7),
+        status: z.enum(clientStatuses).default("starting"),
       }),
     )
     .output(clientSchema)
@@ -95,7 +97,7 @@ export const clientRouter = createTRPCRouter({
 
       const result = await clientRepo.create(ctx.db, {
         name: input.name,
-        colourCode: input.colourCode,
+        status: input.status,
         workspaceId: workspace.id,
         createdBy: userId,
       });
@@ -114,7 +116,7 @@ export const clientRouter = createTRPCRouter({
         summary: "Update a client",
         method: "PUT",
         path: "/clients/{clientPublicId}",
-        description: "Renames or recolours a client",
+        description: "Renames a client or changes its status",
         tags: ["Clients"],
         protect: true,
       },
@@ -123,7 +125,7 @@ export const clientRouter = createTRPCRouter({
       z.object({
         clientPublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
-        colourCode: z.string().length(7),
+        status: z.enum(clientStatuses),
       }),
     )
     .output(clientSchema)
@@ -150,7 +152,7 @@ export const clientRouter = createTRPCRouter({
 
       const result = await clientRepo.update(
         ctx.db,
-        { name: input.name, colourCode: input.colourCode },
+        { name: input.name, status: input.status },
         { clientPublicId: input.clientPublicId },
       );
 

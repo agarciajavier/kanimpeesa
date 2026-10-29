@@ -9,6 +9,7 @@ import { IoChevronForwardSharp } from "react-icons/io5";
 import { authClient } from "@kan/auth/client";
 
 import Avatar from "~/components/Avatar";
+import { ClientForm } from "~/components/ClientForm";
 import Editor from "~/components/Editor";
 import FeedbackModal from "~/components/FeedbackModal";
 import { LabelForm } from "~/components/LabelForm";
@@ -30,13 +31,12 @@ import { getBoardReturnUrl } from "~/utils/board-return-url";
 import { invalidateCard } from "~/utils/cardInvalidation";
 import { formatMemberDisplayName, getAvatarUrl } from "~/utils/helpers";
 import { DeleteLabelConfirmation } from "../../components/DeleteLabelConfirmation";
-import { ClientForm } from "~/components/ClientForm";
-import ClientSelector from "./components/ClientSelector";
 import ActivityList from "./components/ActivityList";
 import { ActivitySortOrderToggle } from "./components/ActivitySortOrderToggle";
 import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
 import { AttachmentUpload } from "./components/AttachmentUpload";
 import Checklists from "./components/Checklists";
+import ClientSelector from "./components/ClientSelector";
 import { DeleteCardConfirmation } from "./components/DeleteCardConfirmation";
 import { DeleteChecklistConfirmation } from "./components/DeleteChecklistConfirmation";
 import { DeleteCommentConfirmation } from "./components/DeleteCommentConfirmation";
@@ -577,6 +577,16 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
             <ClientForm
               workspacePublicId={cardWorkspacePublicId ?? ""}
               cardPublicId={cardId ?? ""}
+            />
+          </Modal>
+
+          <Modal
+            modalSize="sm"
+            isVisible={isOpen && modalContentType === "EDIT_CLIENT"}
+          >
+            <ClientForm
+              workspacePublicId={cardWorkspacePublicId ?? ""}
+              isEdit
             />
           </Modal>
 

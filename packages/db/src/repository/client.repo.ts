@@ -1,7 +1,9 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
+import type { ClientStatus } from "@kan/shared/constants";
 import { cards, clients } from "@kan/db/schema";
+import { clientStatusDetails } from "@kan/shared/constants";
 import { generateUID } from "@kan/shared/utils";
 
 // Impeesa: clients are workspace-wide (see schema/clients.ts).
@@ -12,6 +14,7 @@ export const getAllByWorkspaceId = (db: dbClient, workspaceId: number) => {
       publicId: true,
       name: true,
       colourCode: true,
+      status: true,
     },
     where: and(eq(clients.workspaceId, workspaceId), isNull(clients.deletedAt)),
     orderBy: [asc(clients.name)],
@@ -35,7 +38,7 @@ export const create = async (
   db: dbClient,
   clientInput: {
     name: string;
-    colourCode: string;
+    status: ClientStatus;
     workspaceId: number;
     createdBy: string;
   },
@@ -45,7 +48,8 @@ export const create = async (
     .values({
       publicId: generateUID(),
       name: clientInput.name,
-      colourCode: clientInput.colourCode,
+      status: clientInput.status,
+      colourCode: clientStatusDetails[clientInput.status].colourCode,
       workspaceId: clientInput.workspaceId,
       createdBy: clientInput.createdBy,
     })
@@ -53,6 +57,7 @@ export const create = async (
       publicId: clients.publicId,
       name: clients.name,
       colourCode: clients.colourCode,
+      status: clients.status,
     });
 
   return result;
@@ -60,14 +65,15 @@ export const create = async (
 
 export const update = async (
   db: dbClient,
-  clientInput: { name: string; colourCode: string },
+  clientInput: { name: string; status: ClientStatus },
   args: { clientPublicId: string },
 ) => {
   const [result] = await db
     .update(clients)
     .set({
       name: clientInput.name,
-      colourCode: clientInput.colourCode,
+      status: clientInput.status,
+      colourCode: clientStatusDetails[clientInput.status].colourCode,
       updatedAt: new Date(),
     })
     .where(
@@ -77,6 +83,7 @@ export const update = async (
       publicId: clients.publicId,
       name: clients.name,
       colourCode: clients.colourCode,
+      status: clients.status,
     });
 
   return result;

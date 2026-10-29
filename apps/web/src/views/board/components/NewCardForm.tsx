@@ -631,6 +631,9 @@ export function NewCardForm({
                     item.key === clientPublicId ? null : item.key,
                   )
                 }
+                handleEdit={(clientPublicId) =>
+                  openModal("EDIT_CLIENT", clientPublicId)
+                }
                 handleCreate={() => openModal("NEW_CLIENT")}
                 createNewItemLabel={t`Create new client`}
               >
