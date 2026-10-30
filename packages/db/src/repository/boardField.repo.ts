@@ -7,6 +7,7 @@ import {
   boardFields,
   cardFieldValues,
   cards,
+  lists,
 } from "@kan/db/schema";
 import { generateUID } from "@kan/shared/utils";
 
@@ -272,6 +273,45 @@ export const getValuesForCardWithPublicIds = (db: dbClient, cardId: number) => {
       eq(boardFieldOptions.id, cardFieldValues.optionId),
     )
     .where(eq(cardFieldValues.cardId, cardId));
+};
+
+export const getValuesForBoard = (db: dbClient, boardId: number) => {
+  return db
+    .select({
+      cardPublicId: cards.publicId,
+      fieldPublicId: boardFields.publicId,
+      optionPublicId: boardFieldOptions.publicId,
+    })
+    .from(cardFieldValues)
+    .innerJoin(cards, eq(cards.id, cardFieldValues.cardId))
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boardFields, eq(boardFields.id, cardFieldValues.fieldId))
+    .innerJoin(
+      boardFieldOptions,
+      eq(boardFieldOptions.id, cardFieldValues.optionId),
+    )
+    .where(
+      and(
+        eq(lists.boardId, boardId),
+        isNull(cards.deletedAt),
+        isNull(boardFields.deletedAt),
+        isNull(boardFieldOptions.deletedAt),
+      ),
+    );
+};
+
+export const clearCardValue = (
+  db: dbClient,
+  input: { cardId: number; fieldId: number },
+) => {
+  return db
+    .delete(cardFieldValues)
+    .where(
+      and(
+        eq(cardFieldValues.cardId, input.cardId),
+        eq(cardFieldValues.fieldId, input.fieldId),
+      ),
+    );
 };
 
 export const getValuesForCards = async (db: dbClient, cardIds: number[]) => {

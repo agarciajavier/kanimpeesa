@@ -1,4 +1,7 @@
+import { useParams } from "next/navigation";
+
 import type { BoardCard } from "../types";
+import { api } from "~/utils/api";
 import Card from "./Card";
 
 interface CardPreviewProps {
@@ -7,6 +10,35 @@ interface CardPreviewProps {
 }
 
 export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
+  // Impeesa: the board's custom fields. Every card asks for the same query,
+  // so it is fetched once per board.
+  const params = useParams() as { boardId?: string | string[] } | null;
+  const boardPublicId = Array.isArray(params?.boardId)
+    ? params.boardId[0]
+    : params?.boardId;
+  const boardValues = api.boardFields.boardValues.useQuery(
+    { boardPublicId: boardPublicId ?? "" },
+    { enabled: !!boardPublicId && boardPublicId.length >= 12 },
+  );
+
+  const fields = boardValues.data?.fields.map((field) => {
+    const value = boardValues.data.values.find(
+      (v) =>
+        v.cardPublicId === card.publicId && v.fieldPublicId === field.publicId,
+    );
+    const option = field.options.find(
+      (o) => o.publicId === value?.optionPublicId,
+    );
+
+    return {
+      publicId: field.publicId,
+      name: field.name,
+      option: option
+        ? { name: option.name, colourCode: option.colourCode }
+        : null,
+    };
+  });
+
   return (
     <Card
       title={card.title}
@@ -21,6 +53,7 @@ export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
       attachments={card.attachments}
       dueDate={card.dueDate ?? null}
       client={card.client}
+      fields={fields}
     />
   );
 }

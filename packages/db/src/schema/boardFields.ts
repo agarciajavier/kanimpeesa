@@ -19,7 +19,7 @@ import { users } from "./users";
 
 // Impeesa: custom fields per board, like ClickUp's. For now every field is a
 // dropdown: a name plus coloured options (e.g. Diseño: Pendiente / Haciendo /
-// Listo). A card with no stored value shows the field's first option.
+// Listo). A card with no stored value has the field empty.
 export const boardFields = pgTable(
   "board_field",
   {

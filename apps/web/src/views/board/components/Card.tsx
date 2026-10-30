@@ -25,12 +25,19 @@ const Card = ({
   attachments,
   dueDate,
   client,
+  fields,
 }: {
   title: string;
   ticketNumber?: string | null;
   labels: { name: string; colourCode: string | null }[];
   // Impeesa: see db/schema/clients.ts
   client?: { name: string; colourCode: string | null } | null;
+  // Impeesa: board custom fields; option is null while the field is empty.
+  fields?: {
+    publicId: string;
+    name: string;
+    option: { name: string; colourCode: string | null } | null;
+  }[];
   members: {
     publicId: string;
     email: string;
@@ -84,6 +91,30 @@ const Card = ({
         </span>
       )}
       <span className="break-words">{title}</span>
+      {fields && fields.length > 0 && (
+        <div className="mt-2 flex flex-col gap-0.5 text-xs">
+          {fields.map((field) => (
+            <div
+              key={field.publicId}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="truncate text-light-800 dark:text-dark-800">
+                {field.name}
+              </span>
+              {field.option ? (
+                <span className="flex shrink-0 items-center gap-1 text-light-900 dark:text-dark-900">
+                  <LabelIcon colourCode={field.option.colourCode} />
+                  {field.option.name}
+                </span>
+              ) : (
+                <span className="shrink-0 text-light-700 dark:text-dark-800">
+                  –
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {labels.length ||
       members.length ||
       checklists.length > 0 ||

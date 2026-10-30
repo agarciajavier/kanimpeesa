@@ -72,6 +72,7 @@ export default function CardFields({
     },
     onSettled: async () => {
       await utils.boardFields.forCard.invalidate(queryInput);
+      await utils.boardFields.boardValues.invalidate();
     },
   });
 
@@ -97,11 +98,14 @@ export default function CardFields({
                 leftIcon: <LabelIcon colourCode={option.colourCode} />,
               }))}
               handleSelect={(_, option) => {
-                if (option.key === field.selectedOptionPublicId) return;
+                // Picking the current option again empties the field.
                 setValue.mutate({
                   cardPublicId,
                   fieldPublicId: field.publicId,
-                  optionPublicId: option.key,
+                  optionPublicId:
+                    option.key === field.selectedOptionPublicId
+                      ? null
+                      : option.key,
                 });
               }}
               disabled={disabled}
@@ -111,11 +115,15 @@ export default function CardFields({
               <div
                 className={`flex h-full w-full items-center rounded-[5px] border-[1px] border-light-50 pl-1 text-left dark:border-dark-50 ${disabled ? "cursor-not-allowed opacity-60" : "hover:border-light-300 hover:bg-light-200 dark:hover:border-dark-200 dark:hover:bg-dark-100"}`}
               >
-                {selected && (
+                {selected ? (
                   <Badge
                     value={selected.name}
                     iconLeft={<LabelIcon colourCode={selected.colourCode} />}
                   />
+                ) : (
+                  <span className="py-1 pl-1 text-sm text-light-700 dark:text-dark-800">
+                    –
+                  </span>
                 )}
               </div>
             </CheckboxDropdown>

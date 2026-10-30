@@ -261,7 +261,7 @@ export const boardFieldRouter = createTRPCRouter({
         method: "GET",
         path: "/cards/{cardPublicId}/fields",
         description:
-          "Retrieves the fields of the card's board with the option chosen on this card. A field never set shows its first option.",
+          "Retrieves the fields of the card's board with the option chosen on this card (null while the field is empty).",
         tags: ["Fields"],
         protect: true,
       },
@@ -293,9 +293,9 @@ export const boardFieldRouter = createTRPCRouter({
 
       return fields.map(({ publicId, name, options }) => {
         const stored = values.find((v) => v.fieldPublicId === publicId);
-        const selected =
-          options.find((o) => o.publicId === stored?.optionPublicId) ??
-          options[0];
+        const selected = options.find(
+          (o) => o.publicId === stored?.optionPublicId,
+        );
 
         return {
           publicId,
@@ -312,7 +312,7 @@ export const boardFieldRouter = createTRPCRouter({
         method: "PUT",
         path: "/cards/{cardPublicId}/fields/{fieldPublicId}",
         description:
-          "Chooses an option of a field for a card. If an automation of the board matches the new option, the card is moved and the list is returned.",
+          "Chooses an option of a field for a card, or empties the field with a null optionPublicId. The board's automations for the new option run and their changes are returned.",
         tags: ["Fields"],
         protect: true,
       },
@@ -321,7 +321,7 @@ export const boardFieldRouter = createTRPCRouter({
       z.object({
         cardPublicId: z.string().min(12),
         fieldPublicId: z.string().length(12),
-        optionPublicId: z.string().length(12),
+        optionPublicId: z.string().length(12).nullable(),
       }),
     )
     .output(
@@ -363,16 +363,33 @@ export const boardFieldRouter = createTRPCRouter({
       );
 
       // A field of another board is reported as missing.
-      if (!field || field.boardId !== card.boardId || !option)
+      if (
+        !field ||
+        field.boardId !== card.boardId ||
+        (input.optionPublicId !== null && !option)
+      )
         throw new TRPCError({
           message: `Field option ${input.optionPublicId} not found`,
           code: "NOT_FOUND",
         });
 
+      const result: {
+        movedToList: { publicId: string; name: string } | null;
+        changedFields: { fieldName: string; optionName: string }[];
+      } = { movedToList: null, changedFields: [] };
+
+      if (!option) {
+        await boardFieldRepo.clearCardValue(ctx.db, {
+          cardId: card.id,
+          fieldId: field.id,
+        });
+        return result;
+      }
+
       const values = await boardFieldRepo.getValuesForCard(ctx.db, card.id);
-      const previousOptionId =
-        values.find((v) => v.fieldId === field.id)?.optionId ??
-        field.options[0]?.id;
+      const previousOptionId = values.find(
+        (v) => v.fieldId === field.id,
+      )?.optionId;
 
       await boardFieldRepo.setCardValue(ctx.db, {
         cardId: card.id,
@@ -380,11 +397,6 @@ export const boardFieldRouter = createTRPCRouter({
         optionId: option.id,
         updatedBy: userId,
       });
-
-      const result: {
-        movedToList: { publicId: string; name: string } | null;
-        changedFields: { fieldName: string; optionName: string }[];
-      } = { movedToList: null, changedFields: [] };
 
       if (previousOptionId === option.id) return result;
 
@@ -431,6 +443,50 @@ export const boardFieldRouter = createTRPCRouter({
       }
 
       return result;
+    }),
+  boardValues: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Get the custom field values of a board's cards",
+        method: "GET",
+        path: "/boards/{boardPublicId}/field-values",
+        description:
+          "Retrieves the board's fields and, for every card, the option chosen in each field. Empty fields are left out.",
+        tags: ["Fields"],
+        protect: true,
+      },
+    })
+    .input(z.object({ boardPublicId: z.string().min(12) }))
+    .output(
+      z.object({
+        fields: z.array(fieldSchema),
+        values: z.array(
+          z.object({
+            cardPublicId: z.string(),
+            fieldPublicId: z.string(),
+            optionPublicId: z.string(),
+          }),
+        ),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = requireUser(ctx.user?.id);
+      const board = await getBoard(ctx.db, input.boardPublicId);
+      await assertPermission(ctx.db, userId, board.workspaceId, "board:view");
+
+      const [fields, values] = await Promise.all([
+        boardFieldRepo.getAllByBoardId(ctx.db, board.id),
+        boardFieldRepo.getValuesForBoard(ctx.db, board.id),
+      ]);
+
+      return {
+        fields: fields.map(({ publicId, name, options }) => ({
+          publicId,
+          name,
+          options,
+        })),
+        values,
+      };
     }),
   automations: protectedProcedure
     .meta({

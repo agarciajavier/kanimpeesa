@@ -99,7 +99,7 @@ function FieldEditor({
       />
 
       <p className="mb-1 mt-4 text-xs font-medium text-neutral-600 dark:text-dark-900">
-        Opciones (la primera es la que tiene una tarjeta nueva)
+        Opciones (una tarjeta nueva arranca con el campo vacío)
       </p>
       <div className="space-y-2">
         {draft.options.map((option, index) => (
@@ -171,8 +171,8 @@ function FieldEditor({
       </div>
       {draft.publicId && (
         <p className="mt-3 text-xs text-neutral-500 dark:text-dark-900">
-          Si quitás una opción, las tarjetas que la tenían vuelven a la primera
-          opción y se borran las automatizaciones que la usaban.
+          Si quitás una opción, las tarjetas que la tenían quedan con el campo
+          vacío y se borran las automatizaciones que la usaban.
         </p>
       )}
     </div>
@@ -220,6 +220,7 @@ export default function BoardFieldsView() {
       utils.boardFields.all.invalidate(queryInput),
       utils.boardFields.automations.invalidate(queryInput),
       utils.boardFields.forCard.invalidate(),
+      utils.boardFields.boardValues.invalidate(),
     ]);
   };
 
