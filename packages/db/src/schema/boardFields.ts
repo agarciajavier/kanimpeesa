@@ -26,6 +26,9 @@ export const boardFields = pgTable(
     id: bigserial("id", { mode: "number" }).primaryKey(),
     publicId: varchar("publicId", { length: 12 }).notNull().unique(),
     name: varchar("name", { length: 255 }).notNull(),
+    // An optional field (e.g. Modificaciones) only shows in the card's
+    // progress bar once it has a value.
+    isOptional: boolean("isOptional").notNull().default(false),
     index: integer("index").notNull().default(0),
     boardId: bigint("boardId", { mode: "number" })
       .notNull()
@@ -47,6 +50,9 @@ export const boardFieldOptions = pgTable(
     publicId: varchar("publicId", { length: 12 }).notNull().unique(),
     name: varchar("name", { length: 255 }).notNull(),
     colourCode: varchar("colourCode", { length: 12 }),
+    // Choosing this option counts the field as finished in the card's
+    // progress (e.g. Listo, Aprobado).
+    isDone: boolean("isDone").notNull().default(false),
     index: integer("index").notNull().default(0),
     fieldId: bigint("fieldId", { mode: "number" })
       .notNull()

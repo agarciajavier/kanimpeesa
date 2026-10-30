@@ -34,20 +34,22 @@ const COLOURS = [
 ];
 
 const DEFAULT_OPTIONS = [
-  { name: "Pendiente", colourCode: "#eab308" },
-  { name: "Haciendo", colourCode: "#0ea5e9" },
-  { name: "Listo", colourCode: "#16a34a" },
+  { name: "Pendiente", colourCode: "#eab308", isDone: false },
+  { name: "Haciendo", colourCode: "#0ea5e9", isDone: false },
+  { name: "Listo", colourCode: "#16a34a", isDone: true },
 ];
 
 interface OptionDraft {
   publicId?: string;
   name: string;
   colourCode: string | null;
+  isDone: boolean;
 }
 
 interface FieldDraft {
   publicId?: string;
   name: string;
+  isOptional: boolean;
   options: OptionDraft[];
 }
 
@@ -97,9 +99,20 @@ function FieldEditor({
         onChange={(e) => onChange({ ...draft, name: e.target.value })}
         autoFocus
       />
+      <label className="mt-2 flex w-fit cursor-pointer items-center gap-2 text-xs text-neutral-600 dark:text-dark-900">
+        <input
+          type="checkbox"
+          checked={draft.isOptional}
+          onChange={(e) => onChange({ ...draft, isOptional: e.target.checked })}
+        />
+        Opcional: solo aparece en la barra de progreso si se usa (por ejemplo,
+        Modificaciones)
+      </label>
 
       <p className="mb-1 mt-4 text-xs font-medium text-neutral-600 dark:text-dark-900">
-        Opciones (una tarjeta nueva arranca con el campo vacío)
+        Opciones (una tarjeta nueva arranca con el campo vacío). Tildá
+        &quot;Terminado&quot; en la opción que cuenta para el progreso de la
+        tarjeta.
       </p>
       <div className="space-y-2">
         {draft.options.map((option, index) => (
@@ -126,6 +139,17 @@ function FieldEditor({
                 />
               ))}
             </div>
+            <label
+              className="flex cursor-pointer items-center gap-1 text-xs text-neutral-600 dark:text-dark-900"
+              title="Elegir esta opción cuenta el campo como terminado en el progreso de la tarjeta"
+            >
+              <input
+                type="checkbox"
+                checked={option.isDone}
+                onChange={(e) => setOption(index, { isDone: e.target.checked })}
+              />
+              Terminado
+            </label>
             <button
               type="button"
               aria-label="Quitar opción"
@@ -148,7 +172,10 @@ function FieldEditor({
         onClick={() =>
           onChange({
             ...draft,
-            options: [...draft.options, { name: "", colourCode: "#9ca3af" }],
+            options: [
+              ...draft.options,
+              { name: "", colourCode: "#9ca3af", isDone: false },
+            ],
           })
         }
         className="mt-2 flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline dark:text-dark-900"
@@ -268,18 +295,21 @@ export default function BoardFieldsView() {
       publicId: o.publicId,
       name: o.name.trim(),
       colourCode: o.colourCode,
+      isDone: o.isDone,
     }));
 
     if (draft.publicId)
       updateField.mutate({
         fieldPublicId: draft.publicId,
         name: draft.name.trim(),
+        isOptional: draft.isOptional,
         options,
       });
     else
       createField.mutate({
         boardPublicId,
         name: draft.name.trim(),
+        isOptional: draft.isOptional,
         options,
       });
   };
@@ -373,6 +403,11 @@ export default function BoardFieldsView() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-neutral-900 dark:text-dark-1000">
                       {field.name}
+                      {field.isOptional && (
+                        <span className="ml-2 text-xs font-normal text-neutral-500 dark:text-dark-900">
+                          opcional
+                        </span>
+                      )}
                     </p>
                     <div className="flex flex-wrap gap-1">
                       {field.options.map((option) => (
@@ -416,6 +451,7 @@ export default function BoardFieldsView() {
                           setDraft({
                             publicId: field.publicId,
                             name: field.name,
+                            isOptional: field.isOptional,
                             options: field.options.map((o) => ({ ...o })),
                           })
                         }
@@ -472,6 +508,7 @@ export default function BoardFieldsView() {
                   onClick={() =>
                     setDraft({
                       name: "",
+                      isOptional: false,
                       options: DEFAULT_OPTIONS.map((o) => ({ ...o })),
                     })
                   }

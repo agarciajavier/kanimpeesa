@@ -34,8 +34,16 @@ export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
       publicId: field.publicId,
       name: field.name,
       option: option
-        ? { name: option.name, colourCode: option.colourCode }
+        ? {
+            name: option.name,
+            colourCode: option.colourCode,
+            isDone: option.isDone,
+          }
         : null,
+      // Only fields with a "finished" option count towards the progress,
+      // and optional ones only once they're used.
+      countsForProgress:
+        field.options.some((o) => o.isDone) && (!field.isOptional || !!option),
     };
   });
 

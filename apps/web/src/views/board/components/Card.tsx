@@ -36,7 +36,8 @@ const Card = ({
   fields?: {
     publicId: string;
     name: string;
-    option: { name: string; colourCode: string | null } | null;
+    option: { name: string; colourCode: string | null; isDone: boolean } | null;
+    countsForProgress: boolean;
   }[];
   members: {
     publicId: string;
@@ -71,6 +72,9 @@ const Card = ({
 
   const progress =
     totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+  const progressFields = fields?.filter((f) => f.countsForProgress) ?? [];
+  const doneFields = progressFields.filter((f) => f.option?.isDone).length;
 
   const hasDescription =
     description && description.replace(/<[^>]*>/g, "").trim().length > 0;
@@ -113,6 +117,31 @@ const Card = ({
               )}
             </div>
           ))}
+        </div>
+      )}
+      {progressFields.length > 0 && (
+        <div
+          className="mt-2 flex items-center gap-2"
+          title={`${doneFields} de ${progressFields.length} campos terminados`}
+        >
+          {/* One segment per field, in the colour of its current option;
+              grey while the field is empty. */}
+          <div className="flex h-1.5 flex-1 gap-0.5">
+            {progressFields.map((field) => (
+              <div
+                key={field.publicId}
+                className="h-full flex-1 rounded-full bg-light-300 dark:bg-dark-400"
+                style={
+                  field.option?.colourCode
+                    ? { backgroundColor: field.option.colourCode }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+          <span className="shrink-0 text-[10px] text-light-800 dark:text-dark-800">
+            {Math.round((doneFields / progressFields.length) * 100)}%
+          </span>
         </div>
       )}
       {labels.length ||

@@ -18,11 +18,16 @@ const optionSchema = z.object({
   publicId: z.string(),
   name: z.string(),
   colourCode: z.string().nullable(),
+  isDone: z.boolean(),
 });
+
+// Automations only need to show an option, not whether it finishes a field.
+const optionLabelSchema = optionSchema.omit({ isDone: true });
 
 const fieldSchema = z.object({
   publicId: z.string(),
   name: z.string(),
+  isOptional: z.boolean(),
   options: z.array(optionSchema),
 });
 
@@ -30,16 +35,17 @@ const optionInputSchema = z.object({
   publicId: z.string().length(12).optional(),
   name: z.string().trim().min(1).max(255),
   colourCode: z.string().length(7).nullable(),
+  isDone: z.boolean().default(false),
 });
 
 const automationSchema = z.object({
   publicId: z.string(),
   isActive: z.boolean(),
   field: z.object({ publicId: z.string(), name: z.string() }),
-  option: optionSchema,
+  option: optionLabelSchema,
   list: z.object({ publicId: z.string(), name: z.string() }).nullable(),
   setField: z.object({ publicId: z.string(), name: z.string() }).nullable(),
-  setOption: optionSchema.nullable(),
+  setOption: optionLabelSchema.nullable(),
 });
 
 const requireUser = (userId: string | undefined) => {
@@ -114,9 +120,10 @@ export const boardFieldRouter = createTRPCRouter({
 
       const fields = await boardFieldRepo.getAllByBoardId(ctx.db, board.id);
 
-      return fields.map(({ publicId, name, options }) => ({
+      return fields.map(({ publicId, name, isOptional, options }) => ({
         publicId,
         name,
+        isOptional,
         options,
       }));
     }),
@@ -135,6 +142,7 @@ export const boardFieldRouter = createTRPCRouter({
       z.object({
         boardPublicId: z.string().min(12),
         name: z.string().trim().min(1).max(255),
+        isOptional: z.boolean().default(false),
         options: z.array(optionInputSchema).min(1),
       }),
     )
@@ -146,6 +154,7 @@ export const boardFieldRouter = createTRPCRouter({
 
       const field = await boardFieldRepo.create(ctx.db, {
         name: input.name,
+        isOptional: input.isOptional,
         boardId: board.id,
         createdBy: userId,
         options: input.options,
@@ -175,6 +184,7 @@ export const boardFieldRouter = createTRPCRouter({
       z.object({
         fieldPublicId: z.string().length(12),
         name: z.string().trim().min(1).max(255),
+        isOptional: z.boolean().default(false),
         options: z.array(optionInputSchema).min(1),
       }),
     )
@@ -192,6 +202,7 @@ export const boardFieldRouter = createTRPCRouter({
       return boardFieldRepo.update(ctx.db, {
         fieldId: field.id,
         name: input.name,
+        isOptional: input.isOptional,
         options: input.options,
       });
     }),
@@ -291,7 +302,7 @@ export const boardFieldRouter = createTRPCRouter({
         boardFieldRepo.getValuesForCardWithPublicIds(ctx.db, card.id),
       ]);
 
-      return fields.map(({ publicId, name, options }) => {
+      return fields.map(({ publicId, name, isOptional, options }) => {
         const stored = values.find((v) => v.fieldPublicId === publicId);
         const selected = options.find(
           (o) => o.publicId === stored?.optionPublicId,
@@ -300,6 +311,7 @@ export const boardFieldRouter = createTRPCRouter({
         return {
           publicId,
           name,
+          isOptional,
           options,
           selectedOptionPublicId: selected?.publicId ?? null,
         };
@@ -480,9 +492,10 @@ export const boardFieldRouter = createTRPCRouter({
       ]);
 
       return {
-        fields: fields.map(({ publicId, name, options }) => ({
+        fields: fields.map(({ publicId, name, isOptional, options }) => ({
           publicId,
           name,
+          isOptional,
           options,
         })),
         values,

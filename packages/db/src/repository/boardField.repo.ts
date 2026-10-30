@@ -18,16 +18,28 @@ export interface FieldOptionInput {
   publicId?: string;
   name: string;
   colourCode: string | null;
+  isDone: boolean;
 }
 
 export const getAllByBoardId = (db: dbClient, boardId: number) => {
   return db.query.boardFields.findMany({
-    columns: { id: true, publicId: true, name: true, index: true },
+    columns: {
+      id: true,
+      publicId: true,
+      name: true,
+      isOptional: true,
+      index: true,
+    },
     where: and(eq(boardFields.boardId, boardId), isNull(boardFields.deletedAt)),
     orderBy: [asc(boardFields.index), asc(boardFields.id)],
     with: {
       options: {
-        columns: { publicId: true, name: true, colourCode: true },
+        columns: {
+          publicId: true,
+          name: true,
+          colourCode: true,
+          isDone: true,
+        },
         where: isNull(boardFieldOptions.deletedAt),
         orderBy: [asc(boardFieldOptions.index), asc(boardFieldOptions.id)],
       },
@@ -45,7 +57,13 @@ export const getByPublicId = (db: dbClient, fieldPublicId: string) => {
     with: {
       board: { columns: { workspaceId: true } },
       options: {
-        columns: { id: true, publicId: true, name: true, colourCode: true },
+        columns: {
+          id: true,
+          publicId: true,
+          name: true,
+          colourCode: true,
+          isDone: true,
+        },
         where: isNull(boardFieldOptions.deletedAt),
         orderBy: [asc(boardFieldOptions.index), asc(boardFieldOptions.id)],
       },
@@ -57,6 +75,7 @@ export const create = async (
   db: dbClient,
   input: {
     name: string;
+    isOptional: boolean;
     boardId: number;
     createdBy: string;
     options: FieldOptionInput[];
@@ -78,6 +97,7 @@ export const create = async (
       .values({
         publicId: generateUID(),
         name: input.name,
+        isOptional: input.isOptional,
         boardId: input.boardId,
         index: existing.length,
         createdBy: input.createdBy,
@@ -92,6 +112,7 @@ export const create = async (
           publicId: generateUID(),
           name: option.name,
           colourCode: option.colourCode,
+          isDone: option.isDone,
           index,
           fieldId: field.id,
         })),
@@ -107,12 +128,21 @@ export const create = async (
 // pointed at them.
 export const update = async (
   db: dbClient,
-  input: { fieldId: number; name: string; options: FieldOptionInput[] },
+  input: {
+    fieldId: number;
+    name: string;
+    isOptional: boolean;
+    options: FieldOptionInput[];
+  },
 ) => {
   return db.transaction(async (tx) => {
     await tx
       .update(boardFields)
-      .set({ name: input.name, updatedAt: new Date() })
+      .set({
+        name: input.name,
+        isOptional: input.isOptional,
+        updatedAt: new Date(),
+      })
       .where(eq(boardFields.id, input.fieldId));
 
     const current = await tx
@@ -137,7 +167,12 @@ export const update = async (
         keptIds.push(match.id);
         await tx
           .update(boardFieldOptions)
-          .set({ name: option.name, colourCode: option.colourCode, index })
+          .set({
+            name: option.name,
+            colourCode: option.colourCode,
+            isDone: option.isDone,
+            index,
+          })
           .where(eq(boardFieldOptions.id, match.id));
       } else {
         const [created] = await tx
@@ -146,6 +181,7 @@ export const update = async (
             publicId: generateUID(),
             name: option.name,
             colourCode: option.colourCode,
+            isDone: option.isDone,
             index,
             fieldId: input.fieldId,
           })
