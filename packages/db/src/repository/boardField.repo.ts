@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import {
@@ -168,7 +168,12 @@ export const update = async (
       await tx
         .update(boardAutomations)
         .set({ deletedAt: new Date() })
-        .where(inArray(boardAutomations.optionId, removedIds));
+        .where(
+          or(
+            inArray(boardAutomations.optionId, removedIds),
+            inArray(boardAutomations.setOptionId, removedIds),
+          ),
+        );
     }
 
     return { success: true };
@@ -184,7 +189,12 @@ export const softDelete = async (db: dbClient, fieldId: number) => {
     await tx
       .update(boardAutomations)
       .set({ deletedAt: new Date() })
-      .where(eq(boardAutomations.fieldId, fieldId));
+      .where(
+        or(
+          eq(boardAutomations.fieldId, fieldId),
+          eq(boardAutomations.setFieldId, fieldId),
+        ),
+      );
   });
 };
 
@@ -321,13 +331,29 @@ export const getAutomationsByBoardId = async (
         },
       },
       list: { columns: { publicId: true, name: true, deletedAt: true } },
+      setField: { columns: { publicId: true, name: true, deletedAt: true } },
+      setOption: {
+        columns: {
+          publicId: true,
+          name: true,
+          colourCode: true,
+          deletedAt: true,
+        },
+      },
     },
   });
 
-  // A rule whose list was deleted has nowhere to send cards, so it's hidden.
+  // A rule whose list or field was deleted has nothing left to do, so it's
+  // hidden.
   return rows
     .filter(
-      (r) => !r.field.deletedAt && !r.option.deletedAt && !r.list.deletedAt,
+      (r) =>
+        !r.field.deletedAt &&
+        !r.option.deletedAt &&
+        !r.list?.deletedAt &&
+        !r.setField?.deletedAt &&
+        !r.setOption?.deletedAt &&
+        (r.list ?? (r.setField && r.setOption)),
     )
     .map((r) => ({
       publicId: r.publicId,
@@ -338,7 +364,17 @@ export const getAutomationsByBoardId = async (
         name: r.option.name,
         colourCode: r.option.colourCode,
       },
-      list: { publicId: r.list.publicId, name: r.list.name },
+      list: r.list ? { publicId: r.list.publicId, name: r.list.name } : null,
+      setField: r.setField
+        ? { publicId: r.setField.publicId, name: r.setField.name }
+        : null,
+      setOption: r.setOption
+        ? {
+            publicId: r.setOption.publicId,
+            name: r.setOption.name,
+            colourCode: r.setOption.colourCode,
+          }
+        : null,
     }));
 };
 
@@ -356,13 +392,16 @@ export const getAutomationByPublicId = (
   });
 };
 
+// Exactly one action: listId, or setFieldId + setOptionId.
 export const createAutomation = async (
   db: dbClient,
   input: {
     boardId: number;
     fieldId: number;
     optionId: number;
-    listId: number;
+    listId: number | null;
+    setFieldId: number | null;
+    setOptionId: number | null;
     createdBy: string;
   },
 ) => {
@@ -391,8 +430,9 @@ export const softDeleteAutomation = (db: dbClient, automationId: number) => {
     .where(eq(boardAutomations.id, automationId));
 };
 
-// The oldest active rule wins when several match the same option.
-export const findMatchingAutomation = async (
+// Every active rule for the option, oldest first. Rules pointing at a
+// deleted list, field or option are left out.
+export const findMatchingAutomations = async (
   db: dbClient,
   input: { fieldId: number; optionId: number },
 ) => {
@@ -409,8 +449,28 @@ export const findMatchingAutomation = async (
       list: {
         columns: { id: true, publicId: true, name: true, deletedAt: true },
       },
+      setField: { columns: { id: true, name: true, deletedAt: true } },
+      setOption: { columns: { id: true, name: true, deletedAt: true } },
     },
   });
 
-  return rows.find((r) => !r.list.deletedAt)?.list ?? null;
+  return rows.flatMap((r): AutomationAction[] => {
+    if (r.list && !r.list.deletedAt) return [{ kind: "move", list: r.list }];
+    if (
+      r.setField &&
+      r.setOption &&
+      !r.setField.deletedAt &&
+      !r.setOption.deletedAt
+    )
+      return [{ kind: "set", field: r.setField, option: r.setOption }];
+    return [];
+  });
 };
+
+export type AutomationAction =
+  | { kind: "move"; list: { id: number; publicId: string; name: string } }
+  | {
+      kind: "set";
+      field: { id: number; name: string };
+      option: { id: number; name: string };
+    };

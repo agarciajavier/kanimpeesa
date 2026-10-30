@@ -49,12 +49,23 @@ export default function CardFields({
       });
     },
     onSuccess: async (result) => {
-      if (result.movedToList) {
+      const changes = [
+        ...result.changedFields.map(
+          (c) => `${c.fieldName} pasó a "${c.optionName}"`,
+        ),
+        ...(result.movedToList
+          ? [`La tarjeta pasó a "${result.movedToList.name}"`]
+          : []),
+      ];
+
+      if (changes.length > 0)
         showPopup({
           header: "Automatización",
-          message: `La tarjeta pasó a "${result.movedToList.name}".`,
+          message: `${changes.join(". ")}.`,
           icon: "success",
         });
+
+      if (result.movedToList) {
         await invalidateCard(utils, cardPublicId);
         await utils.board.byId.invalidate();
       }

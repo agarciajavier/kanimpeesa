@@ -77,7 +77,9 @@ export const cardFieldValues = pgTable(
   (table) => [primaryKey({ columns: [table.cardId, table.fieldId] })],
 ).enableRLS();
 
-// Impeesa: "when <field> changes to <option>, move the card to <list>".
+// Impeesa: "when <field> changes to <option>, <action>". The action is
+// either moving the card to <list> (listId) or setting another field of the
+// card to an option (setFieldId + setOptionId); exactly one of them is set.
 export const boardAutomations = pgTable(
   "board_automation",
   {
@@ -92,9 +94,17 @@ export const boardAutomations = pgTable(
     optionId: bigint("optionId", { mode: "number" })
       .notNull()
       .references(() => boardFieldOptions.id, { onDelete: "cascade" }),
-    listId: bigint("listId", { mode: "number" })
-      .notNull()
-      .references(() => lists.id, { onDelete: "cascade" }),
+    listId: bigint("listId", { mode: "number" }).references(() => lists.id, {
+      onDelete: "cascade",
+    }),
+    setFieldId: bigint("setFieldId", { mode: "number" }).references(
+      () => boardFields.id,
+      { onDelete: "cascade" },
+    ),
+    setOptionId: bigint("setOptionId", { mode: "number" }).references(
+      () => boardFieldOptions.id,
+      { onDelete: "cascade" },
+    ),
     isActive: boolean("isActive").notNull().default(true),
     createdBy: uuid("createdBy").references(() => users.id, {
       onDelete: "set null",
@@ -147,14 +157,26 @@ export const boardAutomationsRelations = relations(
     field: one(boardFields, {
       fields: [boardAutomations.fieldId],
       references: [boardFields.id],
+      relationName: "automationTriggerField",
     }),
     option: one(boardFieldOptions, {
       fields: [boardAutomations.optionId],
       references: [boardFieldOptions.id],
+      relationName: "automationTriggerOption",
     }),
     list: one(lists, {
       fields: [boardAutomations.listId],
       references: [lists.id],
+    }),
+    setField: one(boardFields, {
+      fields: [boardAutomations.setFieldId],
+      references: [boardFields.id],
+      relationName: "automationSetField",
+    }),
+    setOption: one(boardFieldOptions, {
+      fields: [boardAutomations.setOptionId],
+      references: [boardFieldOptions.id],
+      relationName: "automationSetOption",
     }),
   }),
 );

@@ -198,11 +198,15 @@ export default function BoardFieldsView() {
   });
 
   const [draft, setDraft] = useState<FieldDraft | null>(null);
-  const [rule, setRule] = useState({
+  const emptyRule = {
     fieldPublicId: "",
     optionPublicId: "",
+    action: "move" as "move" | "set",
     listPublicId: "",
-  });
+    setFieldPublicId: "",
+    setOptionPublicId: "",
+  };
+  const [rule, setRule] = useState(emptyRule);
 
   const showError = () =>
     showPopup({
@@ -243,7 +247,7 @@ export default function BoardFieldsView() {
   });
   const createAutomation = api.boardFields.createAutomation.useMutation({
     onSuccess: async () => {
-      setRule({ fieldPublicId: "", optionPublicId: "", listPublicId: "" });
+      setRule(emptyRule);
       await refresh();
     },
     onError: showError,
@@ -290,8 +294,33 @@ export default function BoardFieldsView() {
 
   const lists = board.data?.lists ?? [];
   const ruleField = fields.data?.find((f) => f.publicId === rule.fieldPublicId);
+  const ruleSetField = fields.data?.find(
+    (f) => f.publicId === rule.setFieldPublicId,
+  );
   const canAddRule =
-    !!rule.fieldPublicId && !!rule.optionPublicId && !!rule.listPublicId;
+    !!rule.fieldPublicId &&
+    !!rule.optionPublicId &&
+    (rule.action === "move"
+      ? !!rule.listPublicId
+      : !!rule.setFieldPublicId && !!rule.setOptionPublicId);
+
+  const addRule = () => {
+    if (!boardPublicId) return;
+    const trigger = {
+      boardPublicId,
+      fieldPublicId: rule.fieldPublicId,
+      optionPublicId: rule.optionPublicId,
+    };
+    createAutomation.mutate(
+      rule.action === "move"
+        ? { ...trigger, listPublicId: rule.listPublicId }
+        : {
+            ...trigger,
+            setFieldPublicId: rule.setFieldPublicId,
+            setOptionPublicId: rule.setOptionPublicId,
+          },
+    );
+  };
 
   return (
     <>
@@ -455,7 +484,8 @@ export default function BoardFieldsView() {
           <h2 className={`${sectionTitleClass} mt-12`}>Automatizaciones</h2>
           <p className={helpClass}>
             Cuando un campo de una tarjeta cambia a cierta opción, la tarjeta se
-            mueve sola a la lista que elijas.
+            mueve sola a una lista o cambia otro campo. Para hacer las dos
+            cosas, armá dos reglas con el mismo &quot;Cuando&quot;.
           </p>
 
           <div className="space-y-2">
@@ -473,8 +503,28 @@ export default function BoardFieldsView() {
                     <LabelIcon colourCode={automation.option.colourCode} />
                   }
                 />
-                <span>→ mover a</span>
-                <strong>{automation.list.name}</strong>
+                {automation.list ? (
+                  <>
+                    <span>→ mover a</span>
+                    <strong>{automation.list.name}</strong>
+                  </>
+                ) : (
+                  <>
+                    <span>→ cambiar</span>
+                    <strong>{automation.setField?.name}</strong>
+                    <span>a</span>
+                    {automation.setOption && (
+                      <Badge
+                        value={automation.setOption.name}
+                        iconLeft={
+                          <LabelIcon
+                            colourCode={automation.setOption.colourCode}
+                          />
+                        }
+                      />
+                    )}
+                  </>
+                )}
                 {canEditBoard && (
                   <div className="ml-auto flex items-center gap-2">
                     <label className="flex cursor-pointer items-center gap-1 text-xs text-neutral-600 dark:text-dark-900">
@@ -534,6 +584,10 @@ export default function BoardFieldsView() {
                         ...rule,
                         fieldPublicId: e.target.value,
                         optionPublicId: "",
+                        ...(rule.setFieldPublicId === e.target.value && {
+                          setFieldPublicId: "",
+                          setOptionPublicId: "",
+                        }),
                       })
                     }
                   >
@@ -560,29 +614,83 @@ export default function BoardFieldsView() {
                       </option>
                     ))}
                   </select>
-                  <span>→ mover a</span>
+                  <span>→</span>
                   <select
                     className={`${inputClass} w-auto`}
-                    value={rule.listPublicId}
+                    value={rule.action}
                     onChange={(e) =>
-                      setRule({ ...rule, listPublicId: e.target.value })
+                      setRule({
+                        ...rule,
+                        action: e.target.value as "move" | "set",
+                      })
                     }
                   >
-                    <option value="">elegí una lista</option>
-                    {lists.map((l) => (
-                      <option key={l.publicId} value={l.publicId}>
-                        {l.name}
-                      </option>
-                    ))}
+                    <option value="move">mover la tarjeta a</option>
+                    <option value="set">cambiar el campo</option>
                   </select>
+                  {rule.action === "move" ? (
+                    <select
+                      className={`${inputClass} w-auto`}
+                      value={rule.listPublicId}
+                      onChange={(e) =>
+                        setRule({ ...rule, listPublicId: e.target.value })
+                      }
+                    >
+                      <option value="">elegí una lista</option>
+                      {lists.map((l) => (
+                        <option key={l.publicId} value={l.publicId}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <select
+                        className={`${inputClass} w-auto`}
+                        value={rule.setFieldPublicId}
+                        onChange={(e) =>
+                          setRule({
+                            ...rule,
+                            setFieldPublicId: e.target.value,
+                            setOptionPublicId: "",
+                          })
+                        }
+                      >
+                        <option value="">elegí un campo</option>
+                        {fields.data
+                          ?.filter((f) => f.publicId !== rule.fieldPublicId)
+                          .map((f) => (
+                            <option key={f.publicId} value={f.publicId}>
+                              {f.name}
+                            </option>
+                          ))}
+                      </select>
+                      <span>a</span>
+                      <select
+                        className={`${inputClass} w-auto`}
+                        value={rule.setOptionPublicId}
+                        disabled={!ruleSetField}
+                        onChange={(e) =>
+                          setRule({
+                            ...rule,
+                            setOptionPublicId: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">elegí una opción</option>
+                        {ruleSetField?.options.map((o) => (
+                          <option key={o.publicId} value={o.publicId}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   <Button
                     size="sm"
                     disabled={!canAddRule || createAutomation.isPending}
                     isLoading={createAutomation.isPending}
-                    onClick={() =>
-                      boardPublicId &&
-                      createAutomation.mutate({ boardPublicId, ...rule })
-                    }
+                    onClick={addRule}
                   >
                     Agregar
                   </Button>

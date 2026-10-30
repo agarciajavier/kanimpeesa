@@ -281,6 +281,13 @@
       "when": 1793315584052,
       "tag": "20261029231304_AddBoardFields",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793365861052,
+      "tag": "20261030131101_AutomationSetField",
+      "breakpoints": true
     }
   ]
 }

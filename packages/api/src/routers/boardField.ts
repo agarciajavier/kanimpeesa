@@ -37,7 +37,9 @@ const automationSchema = z.object({
   isActive: z.boolean(),
   field: z.object({ publicId: z.string(), name: z.string() }),
   option: optionSchema,
-  list: z.object({ publicId: z.string(), name: z.string() }),
+  list: z.object({ publicId: z.string(), name: z.string() }).nullable(),
+  setField: z.object({ publicId: z.string(), name: z.string() }).nullable(),
+  setOption: optionSchema.nullable(),
 });
 
 const requireUser = (userId: string | undefined) => {
@@ -327,6 +329,9 @@ export const boardFieldRouter = createTRPCRouter({
         movedToList: z
           .object({ publicId: z.string(), name: z.string() })
           .nullable(),
+        changedFields: z.array(
+          z.object({ fieldName: z.string(), optionName: z.string() }),
+        ),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -376,30 +381,56 @@ export const boardFieldRouter = createTRPCRouter({
         updatedBy: userId,
       });
 
-      if (previousOptionId === option.id) return { movedToList: null };
+      const result: {
+        movedToList: { publicId: string; name: string } | null;
+        changedFields: { fieldName: string; optionName: string }[];
+      } = { movedToList: null, changedFields: [] };
 
-      const list = await boardFieldRepo.findMatchingAutomation(ctx.db, {
+      if (previousOptionId === option.id) return result;
+
+      const actions = await boardFieldRepo.findMatchingAutomations(ctx.db, {
         fieldId: field.id,
         optionId: option.id,
       });
 
-      if (!list || list.id === card.listId) return { movedToList: null };
+      // Only the user's own change triggers rules: a field set by a rule
+      // doesn't trigger further rules, so rules can never loop.
+      let currentListId = card.listId;
 
-      await cardRepo.reorder(ctx.db, {
-        cardId: card.id,
-        newListId: list.id,
-        newIndex: undefined,
-      });
+      for (const action of actions) {
+        if (action.kind === "set") {
+          await boardFieldRepo.setCardValue(ctx.db, {
+            cardId: card.id,
+            fieldId: action.field.id,
+            optionId: action.option.id,
+            updatedBy: userId,
+          });
+          result.changedFields.push({
+            fieldName: action.field.name,
+            optionName: action.option.name,
+          });
+        } else if (action.list.id !== currentListId) {
+          await cardRepo.reorder(ctx.db, {
+            cardId: card.id,
+            newListId: action.list.id,
+            newIndex: undefined,
+          });
+          await cardActivityRepo.create(ctx.db, {
+            type: "card.updated.list",
+            cardId: card.id,
+            fromListId: currentListId,
+            toListId: action.list.id,
+            createdBy: userId,
+          });
+          currentListId = action.list.id;
+          result.movedToList = {
+            publicId: action.list.publicId,
+            name: action.list.name,
+          };
+        }
+      }
 
-      await cardActivityRepo.create(ctx.db, {
-        type: "card.updated.list",
-        cardId: card.id,
-        fromListId: card.listId,
-        toListId: list.id,
-        createdBy: userId,
-      });
-
-      return { movedToList: { publicId: list.publicId, name: list.name } };
+      return result;
     }),
   automations: protectedProcedure
     .meta({
@@ -428,7 +459,7 @@ export const boardFieldRouter = createTRPCRouter({
         method: "POST",
         path: "/boards/{boardPublicId}/automations",
         description:
-          "When the field changes to the option, the card moves to the list",
+          "When the field changes to the option, either the card moves to listPublicId, or setFieldPublicId is set to setOptionPublicId. Send one of the two.",
         tags: ["Fields"],
         protect: true,
       },
@@ -438,7 +469,9 @@ export const boardFieldRouter = createTRPCRouter({
         boardPublicId: z.string().min(12),
         fieldPublicId: z.string().length(12),
         optionPublicId: z.string().length(12),
-        listPublicId: z.string().min(12),
+        listPublicId: z.string().min(12).optional(),
+        setFieldPublicId: z.string().length(12).optional(),
+        setOptionPublicId: z.string().length(12).optional(),
       }),
     )
     .output(z.object({ publicId: z.string() }))
@@ -447,6 +480,15 @@ export const boardFieldRouter = createTRPCRouter({
       const board = await getBoard(ctx.db, input.boardPublicId);
       await assertPermission(ctx.db, userId, board.workspaceId, "board:edit");
 
+      const isMove = !!input.listPublicId;
+      const isSet = !!input.setFieldPublicId && !!input.setOptionPublicId;
+
+      if (isMove === isSet)
+        throw new TRPCError({
+          message: `Send either listPublicId, or setFieldPublicId and setOptionPublicId`,
+          code: "BAD_REQUEST",
+        });
+
       const field = await boardFieldRepo.getByPublicId(
         ctx.db,
         input.fieldPublicId,
@@ -454,26 +496,55 @@ export const boardFieldRouter = createTRPCRouter({
       const option = field?.options.find(
         (o) => o.publicId === input.optionPublicId,
       );
-      const list = await listRepo.getByPublicId(ctx.db, input.listPublicId);
 
-      // Field, option and list must all belong to this board.
-      if (
-        !field ||
-        field.boardId !== board.id ||
-        !option ||
-        !list ||
-        list.boardId !== board.id
-      )
+      // Everything must belong to this board.
+      if (!field || field.boardId !== board.id || !option)
         throw new TRPCError({
-          message: `Field, option or list not found on this board`,
+          message: `Field or option not found on this board`,
           code: "NOT_FOUND",
         });
+
+      let listId: number | null = null;
+      let setFieldId: number | null = null;
+      let setOptionId: number | null = null;
+
+      if (input.listPublicId) {
+        const list = await listRepo.getByPublicId(ctx.db, input.listPublicId);
+        if (!list || list.boardId !== board.id)
+          throw new TRPCError({
+            message: `List not found on this board`,
+            code: "NOT_FOUND",
+          });
+        listId = list.id;
+      } else {
+        const setField = await boardFieldRepo.getByPublicId(
+          ctx.db,
+          input.setFieldPublicId!,
+        );
+        const setOption = setField?.options.find(
+          (o) => o.publicId === input.setOptionPublicId,
+        );
+        if (!setField || setField.boardId !== board.id || !setOption)
+          throw new TRPCError({
+            message: `Field or option to set not found on this board`,
+            code: "NOT_FOUND",
+          });
+        if (setField.id === field.id)
+          throw new TRPCError({
+            message: `A rule can't change the same field that triggers it`,
+            code: "BAD_REQUEST",
+          });
+        setFieldId = setField.id;
+        setOptionId = setOption.id;
+      }
 
       const automation = await boardFieldRepo.createAutomation(ctx.db, {
         boardId: board.id,
         fieldId: field.id,
         optionId: option.id,
-        listId: list.id,
+        listId,
+        setFieldId,
+        setOptionId,
         createdBy: userId,
       });
 
