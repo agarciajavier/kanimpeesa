@@ -32,6 +32,17 @@ const clientSchema = z.object({
 
 const summarySchema = z.string().trim().max(2000);
 
+// Impeesa: currencies a fee can be in.
+export const feeCurrencies = ["ARS", "USD"] as const;
+const moneySchema = z.number().min(0).max(999_999_999_999).nullable();
+const financesSchema = z.object({
+  clientPublicId: z.string().min(12),
+  monthlyFee: moneySchema,
+  monthlyCost: moneySchema,
+  feeCurrency: z.enum(feeCurrencies),
+  contractedHours: z.number().min(0).max(9999).nullable(),
+});
+
 export const clientRouter = createTRPCRouter({
   overview: protectedProcedure
     .meta({
@@ -366,6 +377,96 @@ export const clientRouter = createTRPCRouter({
       }
 
       await clientRepo.setCardClient(ctx.db, { cardId: card.id, clientId });
+
+      return { success: true };
+    }),
+  // Impeesa: fee, cost and agreed hours of each client, for the Stats page.
+  // Only with "finance:view".
+  finances: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Get the fees and costs of the clients",
+        method: "GET",
+        path: "/workspaces/{workspacePublicId}/clients/finances",
+        description:
+          "Monthly fee, monthly cost, currency and agreed monthly hours of every client",
+        tags: ["Clients"],
+        protect: true,
+      },
+    })
+    .input(z.object({ workspacePublicId: z.string().min(12) }))
+    .output(z.array(financesSchema))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const workspace = await workspaceRepo.getByPublicId(
+        ctx.db,
+        input.workspacePublicId,
+      );
+
+      if (!workspace)
+        throw new TRPCError({
+          message: `Workspace with public ID ${input.workspacePublicId} not found`,
+          code: "NOT_FOUND",
+        });
+      await assertPermission(ctx.db, userId, workspace.id, "finance:view");
+
+      const rows = await clientRepo.getFinancesByWorkspaceId(
+        ctx.db,
+        workspace.id,
+      );
+      const toNumber = (v: string | null) => (v === null ? null : Number(v));
+
+      return rows.map((r) => ({
+        clientPublicId: r.publicId,
+        monthlyFee: toNumber(r.monthlyFee),
+        monthlyCost: toNumber(r.monthlyCost),
+        feeCurrency: r.feeCurrency as (typeof feeCurrencies)[number],
+        contractedHours: toNumber(r.contractedHours),
+      }));
+    }),
+  updateFinances: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Set the fee and cost of a client",
+        method: "PUT",
+        path: "/clients/{clientPublicId}/finances",
+        description:
+          "Sets the monthly fee, monthly cost, currency and agreed monthly hours. null clears a value.",
+        tags: ["Clients"],
+        protect: true,
+      },
+    })
+    .input(financesSchema)
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const client = await clientRepo.getByPublicId(
+        ctx.db,
+        input.clientPublicId,
+      );
+
+      if (!client)
+        throw new TRPCError({
+          message: `Client with public ID ${input.clientPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+      await assertPermission(ctx.db, userId, client.workspaceId, "finance:view");
+
+      await clientRepo.updateFinances(ctx.db, client.id, input);
 
       return { success: true };
     }),

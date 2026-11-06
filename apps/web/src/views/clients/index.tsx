@@ -21,6 +21,7 @@ import { usePopup } from "~/providers/popup";
 import { useWorkspace } from "~/providers/workspace";
 import { api } from "~/utils/api";
 import { LinkRow } from "~/views/card/components/CardLinks";
+import ClientFinances from "./ClientFinances";
 
 // Opens a menu with the four statuses. The trigger (dot or badge) is the
 // children.
@@ -128,13 +129,20 @@ export default function ClientsView() {
   const { workspace } = useWorkspace();
   const { modalContentType, openModal, isOpen } = useModal();
   const { showPopup } = usePopup();
-  const { canEditBoard } = usePermissions();
+  const { canEditBoard, hasPermission } = usePermissions();
+  // Impeesa: fee, cost and agreed hours only for "finance:view"
+  const canSeeFinance = hasPermission("finance:view");
   const utils = api.useUtils();
 
   const workspacePublicId = workspace.publicId;
   const queryInput = { workspacePublicId };
   const clients = api.clients.overview.useQuery(queryInput, {
     enabled: !!workspacePublicId && workspacePublicId.length >= 12,
+  });
+
+  const finances = api.clients.finances.useQuery(queryInput, {
+    enabled:
+      canSeeFinance && !!workspacePublicId && workspacePublicId.length >= 12,
   });
 
   // Only one preview open at a time across the whole page.
@@ -349,6 +357,16 @@ export default function ClientsView() {
                   <p className="mt-2 text-xs text-light-800 dark:text-dark-800">
                     Sin resumen, carpeta ni brief todavía.
                   </p>
+                )}
+
+                {canSeeFinance && finances.data && (
+                  <ClientFinances
+                    workspacePublicId={workspacePublicId}
+                    clientPublicId={client.publicId}
+                    finance={finances.data.find(
+                      (f) => f.clientPublicId === client.publicId,
+                    )}
+                  />
                 )}
               </div>
             ))}

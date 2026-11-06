@@ -40,10 +40,12 @@ export const clients = pgTable(
     // free-text summary, both shown on the Clients page.
     briefUrl: varchar("briefUrl", { length: 2048 }),
     summary: text("summary"),
-    // Profitability (not shown yet; read by timeEntries.summary): what the
-    // client pays per month, in feeCurrency, and the monthly hours agreed
-    // with them. Hours actually worked come from time_entry.
+    // Profitability (Stats page, "finance:view" only): what the client pays
+    // per month and what working on them costs per month (mostly what is
+    // paid to freelancers), both in feeCurrency, plus the monthly hours
+    // agreed with them. Hours actually worked come from time_entry.
     monthlyFee: numeric("monthlyFee", { precision: 14, scale: 2 }),
+    monthlyCost: numeric("monthlyCost", { precision: 14, scale: 2 }),
     feeCurrency: varchar("feeCurrency", { length: 3 }).notNull().default("ARS"),
     contractedHours: numeric("contractedHours", { precision: 7, scale: 2 }),
     workspaceId: bigint("workspaceId", { mode: "number" })

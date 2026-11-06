@@ -192,3 +192,41 @@ export const setCardClient = async (
 
   return result;
 };
+
+// Impeesa: money and agreed hours of every client (Clients page, only for
+// "finance:view"). Numbers come back as strings (numeric columns).
+export const getFinancesByWorkspaceId = (db: dbClient, workspaceId: number) => {
+  return db.query.clients.findMany({
+    columns: {
+      publicId: true,
+      monthlyFee: true,
+      monthlyCost: true,
+      feeCurrency: true,
+      contractedHours: true,
+    },
+    where: and(eq(clients.workspaceId, workspaceId), isNull(clients.deletedAt)),
+  });
+};
+
+export const updateFinances = (
+  db: dbClient,
+  clientId: number,
+  input: {
+    monthlyFee: number | null;
+    monthlyCost: number | null;
+    feeCurrency: string;
+    contractedHours: number | null;
+  },
+) => {
+  const toText = (n: number | null) => (n === null ? null : String(n));
+  return db
+    .update(clients)
+    .set({
+      monthlyFee: toText(input.monthlyFee),
+      monthlyCost: toText(input.monthlyCost),
+      feeCurrency: input.feeCurrency,
+      contractedHours: toText(input.contractedHours),
+      updatedAt: new Date(),
+    })
+    .where(eq(clients.id, clientId));
+};

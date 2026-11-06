@@ -7,7 +7,7 @@ import * as timeEntryRepo from "@kan/db/repository/timeEntry.repo";
 import * as workspaceRepo from "@kan/db/repository/workspace.repo";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { assertPermission } from "../utils/permissions";
+import { assertPermission, hasPermission } from "../utils/permissions";
 
 // Impeesa: time tracking (see db/schema/timeEntries.ts). Anyone who can edit
 // cards logs their own time (guests don't); nobody logs time for someone
@@ -298,18 +298,16 @@ export const timeEntryRouter = createTRPCRouter({
 
       return { success: true };
     }),
-  // Base for the future stats panel: hours by person, by client and by
-  // person × client in a period, plus each client's fee and agreed hours and
-  // each person's hourly cost. Profitability = fee ÷ hours worked, and
-  // margin = fee − Σ(hours × hourly cost). Admins only: it shows fees.
+  // The Stats page. Needs "time:view"; the money fields (fee, cost,
+  // currency) come back only with "finance:view", null otherwise.
   summary: protectedProcedure
     .meta({
       openapi: {
-        summary: "Get the time summary of a workspace",
+        summary: "Get the time stats of a workspace",
         method: "GET",
         path: "/workspaces/{workspacePublicId}/time-summary",
         description:
-          "Hours by person and by client between two dates, with client fees and member hourly costs",
+          "Hours by client, by person and by person × client between two dates, and the 10 cards that took longest. Fees and costs only with the finance permission.",
         tags: ["Time"],
         protect: true,
       },
@@ -323,29 +321,41 @@ export const timeEntryRouter = createTRPCRouter({
     )
     .output(
       z.object({
+        canSeeFinance: z.boolean(),
+        totalSeconds: z.number(),
+        // clientPublicId null = cards without a client
+        byClient: z.array(
+          z.object({
+            clientPublicId: z.string().nullable(),
+            name: z.string().nullable(),
+            colourCode: z.string().nullable(),
+            contractedHours: z.number().nullable(),
+            seconds: z.number(),
+            monthlyFee: z.number().nullable(),
+            monthlyCost: z.number().nullable(),
+            feeCurrency: z.string().nullable(),
+          }),
+        ),
         byUser: z.array(
           z.object({
             userId: z.string(),
             name: z.string().nullable(),
             email: z.string(),
-            hourlyCost: z.number().nullable(),
-            seconds: z.number(),
-          }),
-        ),
-        byClient: z.array(
-          z.object({
-            // null = cards without a client
-            clientPublicId: z.string().nullable(),
-            name: z.string().nullable(),
-            monthlyFee: z.number().nullable(),
-            feeCurrency: z.string().nullable(),
-            contractedHours: z.number().nullable(),
+            image: z.string().nullable(),
             seconds: z.number(),
           }),
         ),
         byUserAndClient: z.array(
           z.object({
             userId: z.string(),
+            clientPublicId: z.string().nullable(),
+            seconds: z.number(),
+          }),
+        ),
+        topCards: z.array(
+          z.object({
+            cardPublicId: z.string(),
+            title: z.string(),
             clientPublicId: z.string().nullable(),
             seconds: z.number(),
           }),
@@ -364,7 +374,13 @@ export const timeEntryRouter = createTRPCRouter({
           message: `Workspace with public ID ${input.workspacePublicId} not found`,
           code: "NOT_FOUND",
         });
-      await assertPermission(ctx.db, userId, workspace.id, "workspace:manage");
+      await assertPermission(ctx.db, userId, workspace.id, "time:view");
+      const canSeeFinance = await hasPermission(
+        ctx.db,
+        userId,
+        workspace.id,
+        "finance:view",
+      );
 
       const summary = await timeEntryRepo.getSummary(ctx.db, {
         workspaceId: workspace.id,
@@ -372,17 +388,62 @@ export const timeEntryRouter = createTRPCRouter({
         to: input.to,
       });
 
-      return {
-        byUser: summary.byUser.map((u) => ({
-          ...u,
-          hourlyCost: toNumber(u.hourlyCost),
-        })),
-        byClient: summary.byClient.map((c) => ({
-          ...c,
-          monthlyFee: toNumber(c.monthlyFee),
+      const clientsById = new Map(summary.allClients.map((c) => [c.id, c]));
+      const publicIdOf = (clientId: number | null) =>
+        clientId === null ? null : (clientsById.get(clientId)?.publicId ?? null);
+      const secondsByClient = new Map(
+        summary.byClient.map((c) => [c.clientId, c.seconds]),
+      );
+
+      // Every live client that is still being worked with shows up, even
+      // with no hours (it may be paying for hours nobody logged); paused,
+      // lost or deleted ones only if they have hours in the period.
+      const byClient = summary.allClients
+        .filter(
+          (c) =>
+            (secondsByClient.get(c.id) ?? 0) > 0 ||
+            (!c.deletedAt && c.status !== "lost" && c.status !== "paused"),
+        )
+        .map((c) => ({
+          clientPublicId: c.publicId as string | null,
+          name: c.name as string | null,
+          colourCode: c.colourCode,
           contractedHours: toNumber(c.contractedHours),
+          seconds: secondsByClient.get(c.id) ?? 0,
+          monthlyFee: canSeeFinance ? toNumber(c.monthlyFee) : null,
+          monthlyCost: canSeeFinance ? toNumber(c.monthlyCost) : null,
+          feeCurrency: canSeeFinance ? c.feeCurrency : null,
+        }));
+
+      const withoutClient = secondsByClient.get(null) ?? 0;
+      if (withoutClient > 0)
+        byClient.push({
+          clientPublicId: null,
+          name: null,
+          colourCode: null,
+          contractedHours: null,
+          seconds: withoutClient,
+          monthlyFee: null,
+          monthlyCost: null,
+          feeCurrency: null,
+        });
+
+      return {
+        canSeeFinance,
+        totalSeconds: summary.byClient.reduce((acc, c) => acc + c.seconds, 0),
+        byClient,
+        byUser: summary.byUser,
+        byUserAndClient: summary.byUserAndClient.map((r) => ({
+          userId: r.userId,
+          clientPublicId: publicIdOf(r.clientId),
+          seconds: r.seconds,
         })),
-        byUserAndClient: summary.byUserAndClient,
+        topCards: summary.topCards.map((c) => ({
+          cardPublicId: c.cardPublicId,
+          title: c.title,
+          clientPublicId: publicIdOf(c.clientId),
+          seconds: c.seconds,
+        })),
       };
     }),
 });

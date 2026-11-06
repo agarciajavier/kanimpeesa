@@ -32,6 +32,7 @@ import ButtonComponent from "~/components/Button";
 import ReactiveButton from "~/components/ReactiveButton";
 import UserMenu from "~/components/UserMenu";
 import WorkspaceMenu from "~/components/WorkspaceMenu";
+import { usePermissions } from "~/hooks/usePermissions";
 import { useWorkspace } from "~/providers/workspace";
 import { api } from "~/utils/api";
 
@@ -54,6 +55,9 @@ export default function SideNavigation({
 }: SideNavigationProps) {
   const router = useRouter();
   const { workspace } = useWorkspace();
+  // Impeesa: the Stats page needs "time:view"
+  const { hasPermission } = usePermissions();
+  const canSeeStats = hasPermission("time:view");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isInitialised, setIsInitialised] = useState(false);
 
@@ -137,6 +141,23 @@ export default function SideNavigation({
           description: "Ir a clientes",
         },
       },
+      // Impeesa: time and profitability stats (see views/stats).
+      ...(canSeeStats
+        ? [
+            {
+              name: "Estadísticas",
+              href: "/stats",
+              icon: isDarkMode ? templatesIconDark : templatesIconLight,
+              keyboardShortcut: {
+                type: "SEQUENCE" as const,
+                strokes: [{ key: "G" }, { key: "E" }],
+                action: () => router.push("/stats"),
+                group: "NAVIGATION" as const,
+                description: "Ir a estadísticas",
+              },
+            },
+          ]
+        : []),
       {
         name: t`Members`,
         href: "/members",
@@ -163,7 +184,7 @@ export default function SideNavigation({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isDarkMode, i18n.locale],
+    [isDarkMode, i18n.locale, canSeeStats],
   );
 
   const toggleCollapse = () => {

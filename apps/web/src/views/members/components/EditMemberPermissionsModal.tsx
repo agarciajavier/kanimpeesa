@@ -151,6 +151,10 @@ export function EditMemberPermissionsModal() {
     "member:invite": t`Can invite members`,
     "member:edit": t`Can edit member roles and permissions`,
     "member:remove": t`Can remove members`,
+
+    // Impeesa
+    "time:view": "Puede ver las estadísticas de tiempo",
+    "finance:view": "Puede ver fees, costos y rentabilidad",
   };
 
   return (

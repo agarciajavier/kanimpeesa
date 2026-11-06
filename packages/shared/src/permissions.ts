@@ -14,6 +14,9 @@ export const permissionResources = [
   "card",
   "comment",
   "member",
+  // Impeesa: time and money stats (see the Stats page)
+  "time",
+  "finance",
 ] as const;
 export type PermissionResource = (typeof permissionResources)[number];
 
@@ -42,6 +45,11 @@ export const allPermissions = [
   "member:invite",
   "member:edit",
   "member:remove",
+  // Impeesa: "time:view" = the time stats (hours by client, person, task);
+  // "finance:view" = fees, costs and profitability. Admins only by default;
+  // can be granted per member.
+  "time:view",
+  "finance:view",
 ] as const;
 
 export type Permission = (typeof allPermissions)[number];
@@ -141,6 +149,10 @@ export const permissionCategories = {
       "member:edit",
       "member:remove",
     ] as const,
+  },
+  time: {
+    label: "Estadísticas",
+    permissions: ["time:view", "finance:view"] as const,
   },
 } as const;
 

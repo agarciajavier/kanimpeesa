@@ -8,7 +8,6 @@ import {
   lists,
   timeEntries,
   users,
-  workspaceMembers,
 } from "@kan/db/schema";
 import { generateUID } from "@kan/shared/utils";
 
@@ -204,9 +203,10 @@ export const softDelete = (db: dbClient, entryId: number) => {
     .where(eq(timeEntries.id, entryId));
 };
 
-// Base for the stats panel: hours in a period by person and by client, with
-// what's needed for profitability (client fee and agreed hours, cost per
-// hour of each person). An entry belongs to the period it started in.
+// The Stats page: hours in a period by client, by person, by person ×
+// client and the cards that took longest, plus every client with its agreed
+// hours and money fields (the router hides the money without
+// "finance:view"). An entry belongs to the period it started in.
 export const getSummary = async (
   db: dbClient,
   args: { workspaceId: number; from: Date; to: Date },
@@ -218,62 +218,63 @@ export const getSummary = async (
     notDeleted,
   );
 
-  const [byUser, byClient, byUserAndClient] = await Promise.all([
-    db
-      .select({
-        userId: timeEntries.userId,
-        name: users.name,
-        email: users.email,
-        hourlyCost: workspaceMembers.hourlyCost,
-        seconds: totalSecondsExpr,
-      })
-      .from(timeEntries)
-      .innerJoin(users, eq(users.id, timeEntries.userId))
-      .leftJoin(
-        workspaceMembers,
-        and(
-          eq(workspaceMembers.userId, timeEntries.userId),
-          eq(workspaceMembers.workspaceId, timeEntries.workspaceId),
-          isNull(workspaceMembers.deletedAt),
-        ),
-      )
-      .where(inPeriod)
-      .groupBy(
-        timeEntries.userId,
-        users.name,
-        users.email,
-        workspaceMembers.hourlyCost,
-      ),
-    db
-      .select({
-        clientPublicId: clients.publicId,
-        name: clients.name,
-        monthlyFee: clients.monthlyFee,
-        feeCurrency: clients.feeCurrency,
-        contractedHours: clients.contractedHours,
-        seconds: totalSecondsExpr,
-      })
-      .from(timeEntries)
-      .leftJoin(clients, eq(clients.id, timeEntries.clientId))
-      .where(inPeriod)
-      .groupBy(
-        clients.publicId,
-        clients.name,
-        clients.monthlyFee,
-        clients.feeCurrency,
-        clients.contractedHours,
-      ),
-    db
-      .select({
-        userId: timeEntries.userId,
-        clientPublicId: clients.publicId,
-        seconds: totalSecondsExpr,
-      })
-      .from(timeEntries)
-      .leftJoin(clients, eq(clients.id, timeEntries.clientId))
-      .where(inPeriod)
-      .groupBy(timeEntries.userId, clients.publicId),
-  ]);
+  const [byUser, byClient, byUserAndClient, topCards, allClients] =
+    await Promise.all([
+      db
+        .select({
+          userId: timeEntries.userId,
+          name: users.name,
+          email: users.email,
+          image: users.image,
+          seconds: totalSecondsExpr,
+        })
+        .from(timeEntries)
+        .innerJoin(users, eq(users.id, timeEntries.userId))
+        .where(inPeriod)
+        .groupBy(timeEntries.userId, users.name, users.email, users.image),
+      db
+        .select({ clientId: timeEntries.clientId, seconds: totalSecondsExpr })
+        .from(timeEntries)
+        .where(inPeriod)
+        .groupBy(timeEntries.clientId),
+      db
+        .select({
+          userId: timeEntries.userId,
+          clientId: timeEntries.clientId,
+          seconds: totalSecondsExpr,
+        })
+        .from(timeEntries)
+        .where(inPeriod)
+        .groupBy(timeEntries.userId, timeEntries.clientId),
+      db
+        .select({
+          cardPublicId: cards.publicId,
+          title: cards.title,
+          clientId: timeEntries.clientId,
+          seconds: totalSecondsExpr,
+        })
+        .from(timeEntries)
+        .innerJoin(cards, eq(cards.id, timeEntries.cardId))
+        .where(inPeriod)
+        .groupBy(cards.publicId, cards.title, timeEntries.clientId)
+        .orderBy(desc(totalSecondsExpr))
+        .limit(10),
+      db
+        .select({
+          id: clients.id,
+          publicId: clients.publicId,
+          name: clients.name,
+          colourCode: clients.colourCode,
+          status: clients.status,
+          monthlyFee: clients.monthlyFee,
+          monthlyCost: clients.monthlyCost,
+          feeCurrency: clients.feeCurrency,
+          contractedHours: clients.contractedHours,
+          deletedAt: clients.deletedAt,
+        })
+        .from(clients)
+        .where(eq(clients.workspaceId, args.workspaceId)),
+    ]);
 
-  return { byUser, byClient, byUserAndClient };
+  return { byUser, byClient, byUserAndClient, topCards, allClients };
 };
