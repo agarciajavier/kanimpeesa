@@ -22,7 +22,7 @@ export function registerClientTools(
 ): void {
   server.tool(
     "list_clients",
-    "List the clients of a workspace with their status, Drive folder, brief, summary and task count. Use it to check whether a client already exists before creating it.",
+    "List the clients of a workspace with their status, type (Gestión/Asesoría), Drive folder, brief, summary and task count. Use it to check whether a client already exists before creating it.",
     {
       workspacePublicId: z.string().describe("The workspace's public ID"),
     },
@@ -42,6 +42,10 @@ export function registerClientTools(
       workspacePublicId: z.string().describe("The workspace's public ID"),
       name: z.string().max(60).describe("Client or brand name"),
       status: statusSchema.optional(),
+      type: z
+        .enum(["management", "advisory"])
+        .optional()
+        .describe("management = Gestión, advisory = Asesoría"),
       driveUrl: z
         .string()
         .url()
@@ -75,6 +79,11 @@ export function registerClientTools(
       clientPublicId: z.string().describe("The client's public ID"),
       name: z.string().max(60).describe("Client name"),
       status: statusSchema,
+      type: z
+        .enum(["management", "advisory"])
+        .nullable()
+        .optional()
+        .describe("management = Gestión, advisory = Asesoría; null removes it"),
       driveUrl: z.string().url().nullable().optional(),
       briefUrl: z.string().url().nullable().optional(),
       summary: z.string().max(2000).nullable().optional(),

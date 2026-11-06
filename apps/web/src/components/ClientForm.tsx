@@ -4,8 +4,13 @@ import { useForm } from "react-hook-form";
 import { HiXMark } from "react-icons/hi2";
 import { twMerge } from "tailwind-merge";
 
-import type { ClientStatus } from "@kan/shared/constants";
-import { clientStatusDetails, clientStatuses } from "@kan/shared/constants";
+import type { ClientStatus, ClientType } from "@kan/shared/constants";
+import {
+  clientStatusDetails,
+  clientStatuses,
+  clientTypeDetails,
+  clientTypes,
+} from "@kan/shared/constants";
 
 import Button from "~/components/Button";
 import Input from "~/components/Input";
@@ -18,6 +23,7 @@ import { invalidateCard } from "~/utils/cardInvalidation";
 interface ClientFormInput {
   name: string;
   status: ClientStatus;
+  type: ClientType | null;
   driveUrl: string;
   briefUrl: string;
   summary: string;
@@ -55,6 +61,7 @@ export function ClientForm({
     values: {
       name: editedClient?.name ?? "",
       status: editedClient?.status ?? "starting",
+      type: editedClient?.type ?? null,
       driveUrl: editedClient?.driveUrl ?? "",
       briefUrl: editedClient?.briefUrl ?? "",
       summary: editedClient?.summary ?? "",
@@ -62,6 +69,7 @@ export function ClientForm({
   });
 
   const selectedStatus = watch("status");
+  const selectedType = watch("type");
 
   // The client shows up on cards and boards, so all of them are refreshed.
   const refreshAfterChange = async () => {
@@ -124,6 +132,7 @@ export function ClientForm({
         clientPublicId: entityId,
         name,
         status: values.status,
+        type: values.type,
         driveUrl,
         briefUrl,
         summary,
@@ -133,6 +142,7 @@ export function ClientForm({
         workspacePublicId,
         name,
         status: values.status,
+        type: values.type,
         driveUrl,
         briefUrl,
         summary,
@@ -182,6 +192,29 @@ export function ClientForm({
             >
               <LabelIcon colourCode={clientStatusDetails[status].colourCode} />
               {clientStatusDetails[status].name}
+            </button>
+          ))}
+        </div>
+
+        <p className="mb-2 mt-4 text-xs font-medium text-neutral-900 dark:text-dark-1000">
+          Tipo de cliente
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {clientTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              // Picking the selected type again clears it.
+              onClick={() =>
+                setValue("type", selectedType === type ? null : type)
+              }
+              className={twMerge(
+                "rounded-md px-3 py-2 text-left text-sm text-neutral-900 ring-1 ring-inset ring-light-600 hover:bg-light-200 dark:text-dark-1000 dark:ring-dark-700 dark:hover:bg-dark-300",
+                selectedType === type &&
+                  "bg-light-200 ring-2 ring-light-900 dark:bg-dark-300 dark:ring-dark-900",
+              )}
+            >
+              {clientTypeDetails[type].name}
             </button>
           ))}
         </div>

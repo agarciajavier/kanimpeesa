@@ -1,7 +1,7 @@
 import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
-import type { ClientStatus } from "@kan/shared/constants";
+import type { ClientStatus, ClientType } from "@kan/shared/constants";
 import { boards, cards, clients, lists } from "@kan/db/schema";
 import { clientStatusDetails } from "@kan/shared/constants";
 import { generateUID } from "@kan/shared/utils";
@@ -15,6 +15,7 @@ export const getAllByWorkspaceId = (db: dbClient, workspaceId: number) => {
       name: true,
       colourCode: true,
       status: true,
+      type: true,
       driveUrl: true,
       briefUrl: true,
       summary: true,
@@ -72,6 +73,7 @@ export const create = async (
   clientInput: {
     name: string;
     status: ClientStatus;
+    type: ClientType | null;
     driveUrl: string | null;
     briefUrl: string | null;
     summary: string | null;
@@ -85,6 +87,7 @@ export const create = async (
       publicId: generateUID(),
       name: clientInput.name,
       status: clientInput.status,
+      type: clientInput.type,
       colourCode: clientStatusDetails[clientInput.status].colourCode,
       driveUrl: clientInput.driveUrl,
       briefUrl: clientInput.briefUrl,
@@ -97,6 +100,7 @@ export const create = async (
       name: clients.name,
       colourCode: clients.colourCode,
       status: clients.status,
+      type: clients.type,
       driveUrl: clients.driveUrl,
       briefUrl: clients.briefUrl,
       summary: clients.summary,
@@ -112,6 +116,7 @@ export const update = async (
   clientInput: {
     name: string;
     status: ClientStatus;
+    type?: ClientType | null;
     driveUrl?: string | null;
     briefUrl?: string | null;
     summary?: string | null;
@@ -124,6 +129,7 @@ export const update = async (
       name: clientInput.name,
       status: clientInput.status,
       colourCode: clientStatusDetails[clientInput.status].colourCode,
+      ...(clientInput.type !== undefined && { type: clientInput.type }),
       ...(clientInput.driveUrl !== undefined && {
         driveUrl: clientInput.driveUrl,
       }),
@@ -143,6 +149,7 @@ export const update = async (
       name: clients.name,
       colourCode: clients.colourCode,
       status: clients.status,
+      type: clients.type,
       driveUrl: clients.driveUrl,
       briefUrl: clients.briefUrl,
       summary: clients.summary,

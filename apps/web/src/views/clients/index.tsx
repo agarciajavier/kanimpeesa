@@ -2,8 +2,13 @@ import { Menu, Transition } from "@headlessui/react";
 import { Fragment, useState } from "react";
 import { HiOutlinePencil, HiOutlineTrash, HiPlus } from "react-icons/hi2";
 
-import type { ClientStatus } from "@kan/shared/constants";
-import { clientStatusDetails, clientStatuses } from "@kan/shared/constants";
+import type { ClientStatus, ClientType } from "@kan/shared/constants";
+import {
+  clientStatusDetails,
+  clientStatuses,
+  clientTypeDetails,
+  clientTypes,
+} from "@kan/shared/constants";
 
 import Button from "~/components/Button";
 import { ClientForm } from "~/components/ClientForm";
@@ -70,6 +75,53 @@ function StatusMenu({
   );
 }
 
+// Gestión / Asesoría picker; "Sin tipo" clears it.
+function TypeMenu({
+  current,
+  disabled,
+  onChange,
+}: {
+  current: ClientType | null;
+  disabled: boolean;
+  onChange: (type: ClientType | null) => void;
+}) {
+  const label = current ? clientTypeDetails[current].name : "Sin tipo";
+  const badge = (
+    <span
+      className={`rounded-full border border-light-400 px-2 py-0.5 text-xs text-light-900 dark:border-dark-500 dark:text-dark-900 ${disabled ? "" : "cursor-pointer hover:opacity-80"} ${current ? "" : "border-dashed"}`}
+    >
+      {label}
+      {!disabled && " ▾"}
+    </span>
+  );
+
+  if (disabled) return current ? badge : null;
+
+  return (
+    <Menu as="div" className="relative inline-flex">
+      <Menu.Button
+        aria-label="Cambiar tipo de cliente"
+        className="flex items-center rounded-full focus:outline-none"
+      >
+        {badge}
+      </Menu.Button>
+      <Menu.Items className="absolute left-0 top-full z-[100] mt-1 w-40 rounded-md border border-light-200 bg-white p-1 shadow-lg focus:outline-none dark:border-dark-400 dark:bg-dark-300">
+        {[...clientTypes, null].map((type) => (
+          <Menu.Item key={type ?? "none"}>
+            <button
+              type="button"
+              onClick={() => type !== current && onChange(type)}
+              className={`flex w-full items-center rounded-[5px] px-2.5 py-1.5 text-left text-sm text-neutral-900 hover:bg-light-200 dark:text-dark-950 dark:hover:bg-dark-400 ${type === current ? "font-semibold" : ""}`}
+            >
+              {type ? clientTypeDetails[type].name : "Sin tipo"}
+            </button>
+          </Menu.Item>
+        ))}
+      </Menu.Items>
+    </Menu>
+  );
+}
+
 // Impeesa: every client of the workspace with its status, Drive folder,
 // brief, summary and how many tasks it has.
 export default function ClientsView() {
@@ -100,6 +152,7 @@ export default function ClientsView() {
             ? {
                 ...c,
                 status: update.status,
+                ...(update.type !== undefined && { type: update.type }),
                 colourCode: clientStatusDetails[update.status].colourCode,
               }
             : c,
@@ -213,6 +266,18 @@ export default function ClientsView() {
                       {canEditBoard && " ▾"}
                     </span>
                   </StatusMenu>
+                  <TypeMenu
+                    current={client.type}
+                    disabled={!canEditBoard}
+                    onChange={(type) =>
+                      updateStatus.mutate({
+                        clientPublicId: client.publicId,
+                        name: client.name,
+                        status: client.status,
+                        type,
+                      })
+                    }
+                  />
                   <span className="text-xs text-light-800 dark:text-dark-800">
                     {client.taskCount === 1
                       ? "1 tarea"

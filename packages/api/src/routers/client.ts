@@ -4,7 +4,7 @@ import { z } from "zod";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as clientRepo from "@kan/db/repository/client.repo";
 import * as workspaceRepo from "@kan/db/repository/workspace.repo";
-import { clientStatuses } from "@kan/shared/constants";
+import { clientStatuses, clientTypes } from "@kan/shared/constants";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { assertCanEdit, assertPermission } from "../utils/permissions";
@@ -24,6 +24,7 @@ const clientSchema = z.object({
   name: z.string(),
   colourCode: z.string().nullable(),
   status: z.enum(clientStatuses),
+  type: z.enum(clientTypes).nullable(),
   driveUrl: z.string().nullable(),
   briefUrl: z.string().nullable(),
   summary: z.string().nullable(),
@@ -137,6 +138,10 @@ export const clientRouter = createTRPCRouter({
         workspacePublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses).default("starting"),
+        type: z
+          .enum(clientTypes)
+          .nullish()
+          .describe("management = Gestión, advisory = Asesoría"),
         driveUrl: webUrlSchema.nullish(),
         briefUrl: webUrlSchema.nullish(),
         summary: summarySchema.nullish(),
@@ -167,6 +172,7 @@ export const clientRouter = createTRPCRouter({
       const result = await clientRepo.create(ctx.db, {
         name: input.name,
         status: input.status,
+        type: input.type ?? null,
         driveUrl: input.driveUrl ?? null,
         briefUrl: input.briefUrl ?? null,
         summary: input.summary || null,
@@ -199,6 +205,10 @@ export const clientRouter = createTRPCRouter({
         clientPublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses),
+        type: z
+          .enum(clientTypes)
+          .nullish()
+          .describe("management = Gestión, advisory = Asesoría"),
         driveUrl: webUrlSchema.nullish(),
         briefUrl: webUrlSchema.nullish(),
         summary: summarySchema.nullish(),
@@ -231,6 +241,7 @@ export const clientRouter = createTRPCRouter({
         {
           name: input.name,
           status: input.status,
+          type: input.type,
           driveUrl: input.driveUrl,
           briefUrl: input.briefUrl,
           summary:

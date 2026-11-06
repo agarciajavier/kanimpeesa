@@ -11,7 +11,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { clientStatuses } from "@kan/shared/constants";
+import { clientStatuses, clientTypes } from "@kan/shared/constants";
 
 import { cards } from "./cards";
 import { users } from "./users";
@@ -21,6 +21,8 @@ import { workspaces } from "./workspaces";
 // which belong to a single board. A card has at most one client.
 // colourCode always follows status (see clientStatusDetails).
 export const clientStatusEnum = pgEnum("client_status", clientStatuses);
+// Gestión or Asesoría; empty until someone sets it.
+export const clientTypeEnum = pgEnum("client_type", clientTypes);
 
 export const clients = pgTable(
   "client",
@@ -30,6 +32,7 @@ export const clients = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     colourCode: varchar("colourCode", { length: 12 }),
     status: clientStatusEnum("status").notNull().default("starting"),
+    type: clientTypeEnum("type"),
     // The client's Google Drive folder, shown on every card of the client.
     driveUrl: varchar("driveUrl", { length: 2048 }),
     // A link to the client's brief (usually a Google Doc) and a short
