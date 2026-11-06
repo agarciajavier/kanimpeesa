@@ -72,7 +72,7 @@ export default function PublicBoardsView() {
 
   return (
     <>
-      <PageHead title={`${data?.name ?? t`Workspace`} | kan.bn`} />
+      <PageHead title={`${data?.name ?? t`Workspace`} | Impeesa`} />
       <style jsx global>{`
         html {
           height: 100vh;

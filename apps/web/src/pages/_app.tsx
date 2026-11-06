@@ -25,8 +25,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: "Kan",
-  description: "The open source Trello alternative",
+  title: "Impeesa · Panel de control",
+  description: "Panel de control de Impeesa Marketing",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 

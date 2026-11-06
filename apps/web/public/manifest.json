@@ -31,9 +31,9 @@
     }
   ],
   "orientation": "portrait-primary",
-  "name": "Kan.bn | The open source alternative to Trello",
+  "name": "Impeesa · Panel de control",
   "scope": "/",
-  "short_name": "Kan.bn",
+  "short_name": "Impeesa",
   "start_url": "/",
   "theme_color": "#000000"
 }
