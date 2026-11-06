@@ -7,9 +7,9 @@ import type { KanClient } from "../client.js";
 // on cards. Mirrors routers/client.ts and routers/cardLink.ts in @kan/api.
 
 const statusSchema = z
-  .enum(["starting", "ok", "at_risk", "critical"])
+  .enum(["starting", "ok", "at_risk", "critical", "paused", "lost"])
   .describe(
-    "Client status: starting (Iniciando), ok (Correcto), at_risk (En riesgo), critical (Crítico)",
+    "Client status: starting (Iniciando), ok (Correcto), at_risk (En riesgo), critical (Crítico), paused (En pausa), lost (Perdido)",
   );
 
 const result = (data: unknown) => ({

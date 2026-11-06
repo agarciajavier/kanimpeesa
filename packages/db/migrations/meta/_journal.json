@@ -309,6 +309,13 @@
       "when": 1793973677216,
       "tag": "20261106140117_ClientBriefSummary",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793975137576,
+      "tag": "20261106142537_ClientStatusPausedLost",
+      "breakpoints": true
     }
   ]
 }
