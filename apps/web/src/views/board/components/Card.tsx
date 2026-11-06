@@ -26,6 +26,7 @@ const Card = ({
   dueDate,
   client,
   fields,
+  timer,
 }: {
   title: string;
   ticketNumber?: string | null;
@@ -58,6 +59,8 @@ const Card = ({
   comments: { publicId: string }[];
   attachments?: { publicId: string }[];
   dueDate?: Date | null;
+  // Impeesa: play/stop button and time logged (see components/TimeTracker)
+  timer?: React.ReactNode;
 }) => {
   const { dateLocale } = useLocalisation();
   const showYear = dueDate ? !isSameYear(dueDate, new Date()) : false;
@@ -150,7 +153,8 @@ const Card = ({
       hasDescription ||
       comments.length > 0 ||
       hasDueDate ||
-      hasAttachments ? (
+      hasAttachments ||
+      timer ? (
         <div className="mt-2 flex flex-col justify-end">
           <div className="space-x-0.5">
             {labels.map((label) => (
@@ -162,6 +166,7 @@ const Card = ({
           </div>
           <div className="mt-2 flex items-center justify-between gap-1">
             <div className="flex items-center gap-2">
+              {timer}
               {hasDescription && (
                 <div className="flex items-center gap-1 text-light-700 dark:text-dark-800">
                   <HiBars3BottomLeft className="h-4 w-4" />

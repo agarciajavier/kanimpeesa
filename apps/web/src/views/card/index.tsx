@@ -25,6 +25,7 @@ import {
 import { usePermissions } from "~/hooks/usePermissions";
 import { useModal } from "~/providers/modal";
 import { usePopup } from "~/providers/popup";
+import { TimerButton } from "~/components/TimeTracker";
 import { useWorkspace } from "~/providers/workspace";
 import { api } from "~/utils/api";
 import { getBoardReturnUrl } from "~/utils/board-return-url";
@@ -37,6 +38,7 @@ import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
 import { AttachmentUpload } from "./components/AttachmentUpload";
 import CardFields from "./components/CardFields";
 import CardLinks from "./components/CardLinks";
+import CardTimeEntries from "./components/CardTimeEntries";
 import Checklists from "./components/Checklists";
 import ClientSelector from "./components/ClientSelector";
 import { DeleteCardConfirmation } from "./components/DeleteCardConfirmation";
@@ -405,6 +407,9 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                   )}
               </div>
               <div className="flex items-center gap-2">
+                {!isTemplate && canEdit && (
+                  <TimerButton cardPublicId={cardId} />
+                )}
                 <Dropdown
                   cardPublicId={cardId}
                   isTemplate={isTemplate}
@@ -496,6 +501,12 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                       </div>
                     </form>
                   </div>
+                  {!isTemplate && (
+                    <CardTimeEntries
+                      cardPublicId={cardId}
+                      viewOnly={!canEdit}
+                    />
+                  )}
                   {!isTemplate && (
                     <CardLinks cardPublicId={cardId} viewOnly={!canEdit} />
                   )}

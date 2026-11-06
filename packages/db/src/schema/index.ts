@@ -19,3 +19,4 @@ export * from "./clients";
 export * from "./checklistTemplates";
 export * from "./boardFields";
 export * from "./cardLinks";
+export * from "./timeEntries";

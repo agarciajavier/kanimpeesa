@@ -1,6 +1,7 @@
 import { useParams } from "next/navigation";
 
 import type { BoardCard } from "../types";
+import { formatDuration, TimerButton } from "~/components/TimeTracker";
 import { api } from "~/utils/api";
 import Card from "./Card";
 
@@ -20,6 +21,15 @@ export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
     { boardPublicId: boardPublicId ?? "" },
     { enabled: !!boardPublicId && boardPublicId.length >= 12 },
   );
+
+  // Impeesa: time logged per card, also once per board.
+  const timeTotals = api.timeEntries.boardTotals.useQuery(
+    { boardPublicId: boardPublicId ?? "" },
+    { enabled: !!boardPublicId && boardPublicId.length >= 12 },
+  );
+  const loggedSeconds =
+    timeTotals.data?.find((t) => t.cardPublicId === card.publicId)?.seconds ??
+    0;
 
   const fields = boardValues.data?.fields.map((field) => {
     const value = boardValues.data.values.find(
@@ -62,6 +72,18 @@ export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
       dueDate={card.dueDate ?? null}
       client={card.client}
       fields={fields}
+      timer={
+        card.publicId.startsWith("PLACEHOLDER") ? undefined : (
+          <span className="-ml-1.5 flex items-center text-light-800 dark:text-dark-800">
+            <TimerButton cardPublicId={card.publicId} size="sm" />
+            {loggedSeconds >= 60 && (
+              <span className="text-[11px]">
+                {formatDuration(loggedSeconds)}
+              </span>
+            )}
+          </span>
+        )
+      }
     />
   );
 }

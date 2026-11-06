@@ -5,6 +5,7 @@ import {
   boolean,
   index,
   integer,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -106,6 +107,9 @@ export const workspaceMembers = pgTable("workspace_members", {
     { onDelete: "restrict" },
   ),
   status: memberStatusEnum("status").default("invited").notNull(),
+  // Impeesa: what an hour of this person costs, to turn tracked hours into
+  // cost per client (see schema/timeEntries.ts). Not shown yet.
+  hourlyCost: numeric("hourlyCost", { precision: 12, scale: 2 }),
 }).enableRLS();
 
 export const workspaceMembersRelations = relations(

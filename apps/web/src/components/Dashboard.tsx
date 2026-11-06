@@ -21,6 +21,7 @@ import { ChangePasswordFormConfirmation } from "~/views/settings/components/Chan
 import Button from "./Button";
 import Modal from "./modal";
 import SideNavigation from "./SideNavigation";
+import { RunningTimerBar } from "./TimeTracker";
 
 interface DashboardProps {
   children: React.ReactNode;
@@ -261,6 +262,9 @@ export default function Dashboard({
           </div>
         </div>
       </div>
+
+      {/* Impeesa: the running timer, visible on every page */}
+      {session && <RunningTimerBar />}
 
       <Modal
         modalSize="sm"
