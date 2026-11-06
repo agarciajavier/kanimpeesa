@@ -86,7 +86,7 @@ export const describeLink = (
 const inputClass =
   "block w-full rounded-md border-0 bg-white/5 px-3 py-1.5 text-sm text-neutral-900 shadow-sm ring-1 ring-inset ring-light-600 focus:ring-2 focus:ring-inset focus:ring-light-700 dark:bg-dark-300 dark:text-dark-1000 dark:ring-dark-700 dark:focus:ring-dark-700";
 
-function LinkRow({
+export function LinkRow({
   rowKey,
   title,
   url,

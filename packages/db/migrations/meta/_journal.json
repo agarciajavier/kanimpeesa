@@ -302,6 +302,13 @@
       "when": 1793970302679,
       "tag": "20261106130502_DriveLinks",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793973677216,
+      "tag": "20261106140117_ClientBriefSummary",
+      "breakpoints": true
     }
   ]
 }

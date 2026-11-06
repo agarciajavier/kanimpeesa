@@ -19,6 +19,8 @@ interface ClientFormInput {
   name: string;
   status: ClientStatus;
   driveUrl: string;
+  briefUrl: string;
+  summary: string;
 }
 
 // Impeesa: creates or edits a workspace-wide client (see db/schema/clients.ts).
@@ -54,6 +56,8 @@ export function ClientForm({
       name: editedClient?.name ?? "",
       status: editedClient?.status ?? "starting",
       driveUrl: editedClient?.driveUrl ?? "",
+      briefUrl: editedClient?.briefUrl ?? "",
+      summary: editedClient?.summary ?? "",
     },
   });
 
@@ -62,6 +66,8 @@ export function ClientForm({
   // The client shows up on cards and boards, so all of them are refreshed.
   const refreshAfterChange = async () => {
     await utils.clients.all.invalidate({ workspacePublicId });
+    await utils.clients.overview.invalidate({ workspacePublicId });
+    await utils.cardLinks.forCard.invalidate();
     await utils.board.byId.invalidate();
     await utils.card.byId.invalidate();
   };
@@ -84,6 +90,7 @@ export function ClientForm({
   const createClient = api.clients.create.useMutation({
     onSuccess: async (newClient) => {
       await utils.clients.all.invalidate({ workspacePublicId });
+      await utils.clients.overview.invalidate({ workspacePublicId });
       if (cardPublicId) {
         setClient.mutate({
           cardPublicId,
@@ -109,6 +116,8 @@ export function ClientForm({
     const name = values.name.trim();
     if (!name) return;
     const driveUrl = values.driveUrl.trim() || null;
+    const briefUrl = values.briefUrl.trim() || null;
+    const summary = values.summary.trim() || null;
 
     if (isEdit) {
       updateClient.mutate({
@@ -116,6 +125,8 @@ export function ClientForm({
         name,
         status: values.status,
         driveUrl,
+        briefUrl,
+        summary,
       });
     } else {
       createClient.mutate({
@@ -123,6 +134,8 @@ export function ClientForm({
         name,
         status: values.status,
         driveUrl,
+        briefUrl,
+        summary,
       });
     }
   };
@@ -184,6 +197,27 @@ export function ClientForm({
         <p className="mt-1 text-xs text-light-800 dark:text-dark-800">
           Aparece en todas las tarjetas de este cliente.
         </p>
+
+        <p className="mb-2 mt-4 text-xs font-medium text-neutral-900 dark:text-dark-1000">
+          Brief (opcional)
+        </p>
+        <Input
+          id="client-brief-url"
+          placeholder="https://docs.google.com/document/d/..."
+          {...register("briefUrl")}
+        />
+
+        <p className="mb-2 mt-4 text-xs font-medium text-neutral-900 dark:text-dark-1000">
+          Resumen (opcional)
+        </p>
+        <textarea
+          id="client-summary"
+          rows={3}
+          maxLength={2000}
+          placeholder="Qué vende, objetivo, tono, lo importante del cliente..."
+          className="block w-full rounded-md border-0 bg-white/5 px-3 py-1.5 text-sm text-neutral-900 shadow-sm ring-1 ring-inset ring-light-600 focus:ring-2 focus:ring-inset focus:ring-light-700 dark:bg-dark-300 dark:text-dark-1000 dark:ring-dark-700 dark:focus:ring-dark-700"
+          {...register("summary")}
+        />
       </div>
 
       <div className="mt-12 flex items-center justify-end border-t border-light-600 px-5 pb-5 pt-5 dark:border-dark-600">

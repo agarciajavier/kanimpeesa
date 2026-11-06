@@ -5,6 +5,7 @@ import {
   index,
   pgEnum,
   pgTable,
+  text,
   timestamp,
   uuid,
   varchar,
@@ -31,6 +32,10 @@ export const clients = pgTable(
     status: clientStatusEnum("status").notNull().default("starting"),
     // The client's Google Drive folder, shown on every card of the client.
     driveUrl: varchar("driveUrl", { length: 2048 }),
+    // A link to the client's brief (usually a Google Doc) and a short
+    // free-text summary, both shown on the Clients page.
+    briefUrl: varchar("briefUrl", { length: 2048 }),
+    summary: text("summary"),
     workspaceId: bigint("workspaceId", { mode: "number" })
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),

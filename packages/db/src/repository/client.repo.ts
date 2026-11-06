@@ -1,8 +1,8 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import type { ClientStatus } from "@kan/shared/constants";
-import { cards, clients } from "@kan/db/schema";
+import { boards, cards, clients, lists } from "@kan/db/schema";
 import { clientStatusDetails } from "@kan/shared/constants";
 import { generateUID } from "@kan/shared/utils";
 
@@ -16,10 +16,42 @@ export const getAllByWorkspaceId = (db: dbClient, workspaceId: number) => {
       colourCode: true,
       status: true,
       driveUrl: true,
+      briefUrl: true,
+      summary: true,
     },
     where: and(eq(clients.workspaceId, workspaceId), isNull(clients.deletedAt)),
     orderBy: [asc(clients.name)],
   });
+};
+
+// Cards of each client still on a live board (deleted cards, lists and
+// boards don't count).
+export const getCardCounts = async (db: dbClient, clientIds: number[]) => {
+  if (clientIds.length === 0) return [];
+
+  return db
+    .select({ clientId: cards.clientId, total: count() })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boards, eq(boards.id, lists.boardId))
+    .where(
+      and(
+        inArray(cards.clientId, clientIds),
+        isNull(cards.deletedAt),
+        isNull(lists.deletedAt),
+        isNull(boards.deletedAt),
+      ),
+    )
+    .groupBy(cards.clientId);
+};
+
+export const getIdsByWorkspaceId = (db: dbClient, workspaceId: number) => {
+  return db
+    .select({ id: clients.id, publicId: clients.publicId })
+    .from(clients)
+    .where(
+      and(eq(clients.workspaceId, workspaceId), isNull(clients.deletedAt)),
+    );
 };
 
 export const getByPublicId = (db: dbClient, clientPublicId: string) => {
@@ -41,6 +73,8 @@ export const create = async (
     name: string;
     status: ClientStatus;
     driveUrl: string | null;
+    briefUrl: string | null;
+    summary: string | null;
     workspaceId: number;
     createdBy: string;
   },
@@ -53,6 +87,8 @@ export const create = async (
       status: clientInput.status,
       colourCode: clientStatusDetails[clientInput.status].colourCode,
       driveUrl: clientInput.driveUrl,
+      briefUrl: clientInput.briefUrl,
+      summary: clientInput.summary,
       workspaceId: clientInput.workspaceId,
       createdBy: clientInput.createdBy,
     })
@@ -62,6 +98,8 @@ export const create = async (
       colourCode: clients.colourCode,
       status: clients.status,
       driveUrl: clients.driveUrl,
+      briefUrl: clients.briefUrl,
+      summary: clients.summary,
     });
 
   return result;
@@ -69,11 +107,14 @@ export const create = async (
 
 export const update = async (
   db: dbClient,
-  // driveUrl: undefined keeps the current folder, null removes it.
+  // For driveUrl, briefUrl and summary: undefined keeps the current value,
+  // null removes it.
   clientInput: {
     name: string;
     status: ClientStatus;
     driveUrl?: string | null;
+    briefUrl?: string | null;
+    summary?: string | null;
   },
   args: { clientPublicId: string },
 ) => {
@@ -86,6 +127,12 @@ export const update = async (
       ...(clientInput.driveUrl !== undefined && {
         driveUrl: clientInput.driveUrl,
       }),
+      ...(clientInput.briefUrl !== undefined && {
+        briefUrl: clientInput.briefUrl,
+      }),
+      ...(clientInput.summary !== undefined && {
+        summary: clientInput.summary,
+      }),
       updatedAt: new Date(),
     })
     .where(
@@ -97,6 +144,8 @@ export const update = async (
       colourCode: clients.colourCode,
       status: clients.status,
       driveUrl: clients.driveUrl,
+      briefUrl: clients.briefUrl,
+      summary: clients.summary,
     });
 
   return result;

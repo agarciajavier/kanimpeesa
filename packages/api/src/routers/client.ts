@@ -25,9 +25,65 @@ const clientSchema = z.object({
   colourCode: z.string().nullable(),
   status: z.enum(clientStatuses),
   driveUrl: z.string().nullable(),
+  briefUrl: z.string().nullable(),
+  summary: z.string().nullable(),
 });
 
+const summarySchema = z.string().trim().max(2000);
+
 export const clientRouter = createTRPCRouter({
+  overview: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Get the clients of a workspace with their task count",
+        method: "GET",
+        path: "/workspaces/{workspacePublicId}/clients/overview",
+        description:
+          "Retrieves every client with its folder, brief, summary and how many tasks it has",
+        tags: ["Clients"],
+        protect: true,
+      },
+    })
+    .input(z.object({ workspacePublicId: z.string().min(12) }))
+    .output(z.array(clientSchema.extend({ taskCount: z.number() })))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const workspace = await workspaceRepo.getByPublicId(
+        ctx.db,
+        input.workspacePublicId,
+      );
+
+      if (!workspace)
+        throw new TRPCError({
+          message: `Workspace with public ID ${input.workspacePublicId} not found`,
+          code: "NOT_FOUND",
+        });
+      await assertPermission(ctx.db, userId, workspace.id, "board:view");
+
+      const [clients, ids] = await Promise.all([
+        clientRepo.getAllByWorkspaceId(ctx.db, workspace.id),
+        clientRepo.getIdsByWorkspaceId(ctx.db, workspace.id),
+      ]);
+      const counts = await clientRepo.getCardCounts(
+        ctx.db,
+        ids.map((c) => c.id),
+      );
+
+      return clients.map((client) => {
+        const id = ids.find((c) => c.publicId === client.publicId)?.id;
+        return {
+          ...client,
+          taskCount: counts.find((c) => c.clientId === id)?.total ?? 0,
+        };
+      });
+    }),
   all: protectedProcedure
     .meta({
       openapi: {
@@ -71,7 +127,7 @@ export const clientRouter = createTRPCRouter({
         method: "POST",
         path: "/workspaces/{workspacePublicId}/clients",
         description:
-          "Creates a new client in a workspace, optionally with its Google Drive folder (driveUrl)",
+          "Creates a new client in a workspace, optionally with its Google Drive folder (driveUrl), the link to its brief (briefUrl) and a short summary",
         tags: ["Clients"],
         protect: true,
       },
@@ -82,6 +138,8 @@ export const clientRouter = createTRPCRouter({
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses).default("starting"),
         driveUrl: webUrlSchema.nullish(),
+        briefUrl: webUrlSchema.nullish(),
+        summary: summarySchema.nullish(),
       }),
     )
     .output(clientSchema)
@@ -110,6 +168,8 @@ export const clientRouter = createTRPCRouter({
         name: input.name,
         status: input.status,
         driveUrl: input.driveUrl ?? null,
+        briefUrl: input.briefUrl ?? null,
+        summary: input.summary || null,
         workspaceId: workspace.id,
         createdBy: userId,
       });
@@ -129,7 +189,7 @@ export const clientRouter = createTRPCRouter({
         method: "PUT",
         path: "/clients/{clientPublicId}",
         description:
-          "Renames a client, changes its status or its Drive folder (driveUrl null removes it, left out keeps it)",
+          "Renames a client or changes its status, Drive folder, brief or summary (null removes a value, left out keeps it)",
         tags: ["Clients"],
         protect: true,
       },
@@ -140,6 +200,8 @@ export const clientRouter = createTRPCRouter({
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses),
         driveUrl: webUrlSchema.nullish(),
+        briefUrl: webUrlSchema.nullish(),
+        summary: summarySchema.nullish(),
       }),
     )
     .output(clientSchema)
@@ -166,7 +228,14 @@ export const clientRouter = createTRPCRouter({
 
       const result = await clientRepo.update(
         ctx.db,
-        { name: input.name, status: input.status, driveUrl: input.driveUrl },
+        {
+          name: input.name,
+          status: input.status,
+          driveUrl: input.driveUrl,
+          briefUrl: input.briefUrl,
+          summary:
+            input.summary === undefined ? undefined : input.summary || null,
+        },
         { clientPublicId: input.clientPublicId },
       );
 

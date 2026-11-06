@@ -19,6 +19,8 @@ import { hasActiveSubscription } from "@kan/shared/utils";
 import type { KeyboardShortcut } from "~/providers/keyboard-shortcuts";
 import boardsIconDark from "~/assets/boards-dark.json";
 import boardsIconLight from "~/assets/boards-light.json";
+import labelsIconDark from "~/assets/labels-dark.json";
+import labelsIconLight from "~/assets/labels-light.json";
 import membersIconDark from "~/assets/members-dark.json";
 import membersIconLight from "~/assets/members-light.json";
 import settingsIconDark from "~/assets/settings-dark.json";
@@ -119,6 +121,19 @@ export default function SideNavigation({
           action: () => router.push("/templates"),
           group: "NAVIGATION",
           description: t`Go to templates`,
+        },
+      },
+      // Impeesa: workspace clients (see views/clients).
+      {
+        name: "Clientes",
+        href: "/clients",
+        icon: isDarkMode ? labelsIconDark : labelsIconLight,
+        keyboardShortcut: {
+          type: "SEQUENCE",
+          strokes: [{ key: "G" }, { key: "C" }],
+          action: () => router.push("/clients"),
+          group: "NAVIGATION",
+          description: "Ir a clientes",
         },
       },
       {
