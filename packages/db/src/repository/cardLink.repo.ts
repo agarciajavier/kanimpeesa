@@ -7,7 +7,7 @@ import { generateUID } from "@kan/shared/utils";
 // Impeesa: Drive (or any web) links on a card (see schema/cardLinks.ts).
 
 // The card plus what the links section shows next to its own links: the
-// Drive folder of the card's client.
+// Drive folder and the brief of the card's client (null when it has neither).
 export const getCardWithClientFolder = async (
   db: dbClient,
   cardPublicId: string,
@@ -16,7 +16,14 @@ export const getCardWithClientFolder = async (
     columns: { id: true, createdBy: true },
     where: and(eq(cards.publicId, cardPublicId), isNull(cards.deletedAt)),
     with: {
-      client: { columns: { name: true, driveUrl: true, deletedAt: true } },
+      client: {
+        columns: {
+          name: true,
+          driveUrl: true,
+          briefUrl: true,
+          deletedAt: true,
+        },
+      },
       list: {
         columns: {},
         with: { board: { columns: { workspaceId: true } } },
@@ -27,8 +34,14 @@ export const getCardWithClientFolder = async (
   if (!card) return null;
 
   const client =
-    card.client && !card.client.deletedAt && card.client.driveUrl
-      ? { name: card.client.name, driveUrl: card.client.driveUrl }
+    card.client &&
+    !card.client.deletedAt &&
+    (card.client.driveUrl ?? card.client.briefUrl)
+      ? {
+          name: card.client.name,
+          driveUrl: card.client.driveUrl,
+          briefUrl: card.client.briefUrl,
+        }
       : null;
 
   return {

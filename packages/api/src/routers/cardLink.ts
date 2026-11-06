@@ -46,7 +46,7 @@ export const cardLinkRouter = createTRPCRouter({
         method: "GET",
         path: "/cards/{cardPublicId}/links",
         description:
-          "Retrieves the card's links and the Drive folder of its client, if any",
+          "Retrieves the card's links and the Drive folder and brief of its client, if any",
         tags: ["Links"],
         protect: true,
       },
@@ -55,7 +55,11 @@ export const cardLinkRouter = createTRPCRouter({
     .output(
       z.object({
         clientFolder: z
-          .object({ name: z.string(), driveUrl: z.string() })
+          .object({
+            name: z.string(),
+            driveUrl: z.string().nullable(),
+            briefUrl: z.string().nullable(),
+          })
           .nullable(),
         links: z.array(linkSchema),
       }),

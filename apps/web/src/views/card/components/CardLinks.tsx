@@ -221,11 +221,20 @@ export default function CardLinks({
         Archivos y carpetas
       </p>
 
-      {clientFolder && (
+      {clientFolder?.driveUrl && (
         <LinkRow
           rowKey="client-folder"
           title={`Carpeta de ${clientFolder.name}`}
           url={clientFolder.driveUrl}
+          openPreview={openPreview}
+          onTogglePreview={togglePreview}
+        />
+      )}
+      {clientFolder?.briefUrl && (
+        <LinkRow
+          rowKey="client-brief"
+          title={`Brief de ${clientFolder.name}`}
+          url={clientFolder.briefUrl}
           openPreview={openPreview}
           onTogglePreview={togglePreview}
         />
