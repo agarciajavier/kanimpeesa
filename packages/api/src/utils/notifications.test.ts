@@ -118,7 +118,7 @@ describe("sendMentionEmails", () => {
 
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       "member@example.com",
-      "Author mentioned you in a comment on A card",
+      "Author te mencionó en A card",
       "MENTION",
       {
         commenterName: "Author",

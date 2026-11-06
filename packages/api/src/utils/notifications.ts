@@ -102,7 +102,7 @@ export async function sendMentionEmails({
         try {
           await sendEmail(
             email,
-            `${commenterName} mentioned you in a comment on ${cardTitle}`,
+            `${commenterName} te mencionó en ${cardTitle}`,
             "MENTION",
             {
               commenterName,
