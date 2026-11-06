@@ -18,6 +18,7 @@ import { invalidateCard } from "~/utils/cardInvalidation";
 interface ClientFormInput {
   name: string;
   status: ClientStatus;
+  driveUrl: string;
 }
 
 // Impeesa: creates or edits a workspace-wide client (see db/schema/clients.ts).
@@ -52,6 +53,7 @@ export function ClientForm({
     values: {
       name: editedClient?.name ?? "",
       status: editedClient?.status ?? "starting",
+      driveUrl: editedClient?.driveUrl ?? "",
     },
   });
 
@@ -106,15 +108,22 @@ export function ClientForm({
   const onSubmit = (values: ClientFormInput) => {
     const name = values.name.trim();
     if (!name) return;
+    const driveUrl = values.driveUrl.trim() || null;
 
     if (isEdit) {
       updateClient.mutate({
         clientPublicId: entityId,
         name,
         status: values.status,
+        driveUrl,
       });
     } else {
-      createClient.mutate({ workspacePublicId, name, status: values.status });
+      createClient.mutate({
+        workspacePublicId,
+        name,
+        status: values.status,
+        driveUrl,
+      });
     }
   };
 
@@ -163,6 +172,18 @@ export function ClientForm({
             </button>
           ))}
         </div>
+
+        <p className="mb-2 mt-4 text-xs font-medium text-neutral-900 dark:text-dark-1000">
+          Carpeta de Drive (opcional)
+        </p>
+        <Input
+          id="client-drive-url"
+          placeholder="https://drive.google.com/drive/folders/..."
+          {...register("driveUrl")}
+        />
+        <p className="mt-1 text-xs text-light-800 dark:text-dark-800">
+          Aparece en todas las tarjetas de este cliente.
+        </p>
       </div>
 
       <div className="mt-12 flex items-center justify-end border-t border-light-600 px-5 pb-5 pt-5 dark:border-dark-600">

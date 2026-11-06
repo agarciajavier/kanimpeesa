@@ -36,6 +36,7 @@ import { ActivitySortOrderToggle } from "./components/ActivitySortOrderToggle";
 import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
 import { AttachmentUpload } from "./components/AttachmentUpload";
 import CardFields from "./components/CardFields";
+import CardLinks from "./components/CardLinks";
 import Checklists from "./components/Checklists";
 import ClientSelector from "./components/ClientSelector";
 import { DeleteCardConfirmation } from "./components/DeleteCardConfirmation";
@@ -495,6 +496,9 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                       </div>
                     </form>
                   </div>
+                  {!isTemplate && (
+                    <CardLinks cardPublicId={cardId} viewOnly={!canEdit} />
+                  )}
                   <Checklists
                     checklists={card.checklists}
                     cardPublicId={cardId}

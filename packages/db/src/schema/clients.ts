@@ -29,6 +29,8 @@ export const clients = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     colourCode: varchar("colourCode", { length: 12 }),
     status: clientStatusEnum("status").notNull().default("starting"),
+    // The client's Google Drive folder, shown on every card of the client.
+    driveUrl: varchar("driveUrl", { length: 2048 }),
     workspaceId: bigint("workspaceId", { mode: "number" })
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),

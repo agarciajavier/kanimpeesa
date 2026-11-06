@@ -11,11 +11,20 @@ import { assertCanEdit, assertPermission } from "../utils/permissions";
 
 // Impeesa: workspace-wide clients, one per card (see db/schema/clients.ts).
 
+// Only web links: a "javascript:" URL would run code when clicked.
+export const webUrlSchema = z
+  .string()
+  .trim()
+  .max(2048)
+  .url()
+  .refine((url) => /^https?:\/\//i.test(url), "Must be an http(s) link");
+
 const clientSchema = z.object({
   publicId: z.string(),
   name: z.string(),
   colourCode: z.string().nullable(),
   status: z.enum(clientStatuses),
+  driveUrl: z.string().nullable(),
 });
 
 export const clientRouter = createTRPCRouter({
@@ -61,7 +70,8 @@ export const clientRouter = createTRPCRouter({
         summary: "Create a client",
         method: "POST",
         path: "/workspaces/{workspacePublicId}/clients",
-        description: "Creates a new client in a workspace",
+        description:
+          "Creates a new client in a workspace, optionally with its Google Drive folder (driveUrl)",
         tags: ["Clients"],
         protect: true,
       },
@@ -71,6 +81,7 @@ export const clientRouter = createTRPCRouter({
         workspacePublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses).default("starting"),
+        driveUrl: webUrlSchema.nullish(),
       }),
     )
     .output(clientSchema)
@@ -98,6 +109,7 @@ export const clientRouter = createTRPCRouter({
       const result = await clientRepo.create(ctx.db, {
         name: input.name,
         status: input.status,
+        driveUrl: input.driveUrl ?? null,
         workspaceId: workspace.id,
         createdBy: userId,
       });
@@ -116,7 +128,8 @@ export const clientRouter = createTRPCRouter({
         summary: "Update a client",
         method: "PUT",
         path: "/clients/{clientPublicId}",
-        description: "Renames a client or changes its status",
+        description:
+          "Renames a client, changes its status or its Drive folder (driveUrl null removes it, left out keeps it)",
         tags: ["Clients"],
         protect: true,
       },
@@ -126,6 +139,7 @@ export const clientRouter = createTRPCRouter({
         clientPublicId: z.string().min(12),
         name: z.string().trim().min(1).max(60),
         status: z.enum(clientStatuses),
+        driveUrl: webUrlSchema.nullish(),
       }),
     )
     .output(clientSchema)
@@ -152,7 +166,7 @@ export const clientRouter = createTRPCRouter({
 
       const result = await clientRepo.update(
         ctx.db,
-        { name: input.name, status: input.status },
+        { name: input.name, status: input.status, driveUrl: input.driveUrl },
         { clientPublicId: input.clientPublicId },
       );
 

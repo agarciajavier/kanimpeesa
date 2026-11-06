@@ -15,6 +15,7 @@ export const getAllByWorkspaceId = (db: dbClient, workspaceId: number) => {
       name: true,
       colourCode: true,
       status: true,
+      driveUrl: true,
     },
     where: and(eq(clients.workspaceId, workspaceId), isNull(clients.deletedAt)),
     orderBy: [asc(clients.name)],
@@ -39,6 +40,7 @@ export const create = async (
   clientInput: {
     name: string;
     status: ClientStatus;
+    driveUrl: string | null;
     workspaceId: number;
     createdBy: string;
   },
@@ -50,6 +52,7 @@ export const create = async (
       name: clientInput.name,
       status: clientInput.status,
       colourCode: clientStatusDetails[clientInput.status].colourCode,
+      driveUrl: clientInput.driveUrl,
       workspaceId: clientInput.workspaceId,
       createdBy: clientInput.createdBy,
     })
@@ -58,6 +61,7 @@ export const create = async (
       name: clients.name,
       colourCode: clients.colourCode,
       status: clients.status,
+      driveUrl: clients.driveUrl,
     });
 
   return result;
@@ -65,7 +69,12 @@ export const create = async (
 
 export const update = async (
   db: dbClient,
-  clientInput: { name: string; status: ClientStatus },
+  // driveUrl: undefined keeps the current folder, null removes it.
+  clientInput: {
+    name: string;
+    status: ClientStatus;
+    driveUrl?: string | null;
+  },
   args: { clientPublicId: string },
 ) => {
   const [result] = await db
@@ -74,6 +83,9 @@ export const update = async (
       name: clientInput.name,
       status: clientInput.status,
       colourCode: clientStatusDetails[clientInput.status].colourCode,
+      ...(clientInput.driveUrl !== undefined && {
+        driveUrl: clientInput.driveUrl,
+      }),
       updatedAt: new Date(),
     })
     .where(
@@ -84,6 +96,7 @@ export const update = async (
       name: clients.name,
       colourCode: clients.colourCode,
       status: clients.status,
+      driveUrl: clients.driveUrl,
     });
 
   return result;
