@@ -212,9 +212,8 @@ export function createPlugins(db: dbClient) {
 
             await sendEmail(
               email,
-              workspaceName
-                ? `Invitation to join the workspace ${workspaceName}`
-                : "Invitation to join workspace",
+              // Impeesa: Spanish subject (see templates/join-workspace.tsx).
+              "Tu acceso al Panel de control de Impeesa",
               "JOIN_WORKSPACE",
               {
                 magicLoginUrl: url,
