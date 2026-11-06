@@ -7,9 +7,11 @@ import * as boardFieldRepo from "@kan/db/repository/boardField.repo";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as cardActivityRepo from "@kan/db/repository/cardActivity.repo";
 import * as listRepo from "@kan/db/repository/list.repo";
+import * as memberRepo from "@kan/db/repository/member.repo";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { assertCanEdit, assertPermission } from "../utils/permissions";
+import { sendPush } from "../utils/push";
 
 // Impeesa: board custom fields (dropdowns) and the automations that move a
 // card to a list when one of its fields changes (see db/schema/boardFields.ts).
@@ -46,6 +48,27 @@ const automationSchema = z.object({
   list: z.object({ publicId: z.string(), name: z.string() }).nullable(),
   setField: z.object({ publicId: z.string(), name: z.string() }).nullable(),
   setOption: optionLabelSchema.nullable(),
+  notifyField: z.object({ publicId: z.string(), name: z.string() }).nullable(),
+});
+
+// The person in charge of a field on a card.
+const assigneeSchema = z.object({
+  memberPublicId: z.string(),
+  email: z.string(),
+  name: z.string().nullable(),
+  image: z.string().nullable(),
+});
+
+const toAssignee = (row: {
+  memberPublicId: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+}) => ({
+  memberPublicId: row.memberPublicId,
+  email: row.email,
+  name: row.name,
+  image: row.image,
 });
 
 const requireUser = (userId: string | undefined) => {
@@ -272,7 +295,7 @@ export const boardFieldRouter = createTRPCRouter({
         method: "GET",
         path: "/cards/{cardPublicId}/fields",
         description:
-          "Retrieves the fields of the card's board with the option chosen on this card (null while the field is empty).",
+          "Retrieves the fields of the card's board with the option chosen on this card (null while the field is empty) and the person in charge of each field (null when nobody is).",
         tags: ["Fields"],
         protect: true,
       },
@@ -280,7 +303,10 @@ export const boardFieldRouter = createTRPCRouter({
     .input(z.object({ cardPublicId: z.string().min(12) }))
     .output(
       z.array(
-        fieldSchema.extend({ selectedOptionPublicId: z.string().nullable() }),
+        fieldSchema.extend({
+          selectedOptionPublicId: z.string().nullable(),
+          assignee: assigneeSchema.nullable(),
+        }),
       ),
     )
     .query(async ({ ctx, input }) => {
@@ -297,9 +323,10 @@ export const boardFieldRouter = createTRPCRouter({
         });
       await assertPermission(ctx.db, userId, card.workspaceId, "board:view");
 
-      const [fields, values] = await Promise.all([
+      const [fields, values, assignees] = await Promise.all([
         boardFieldRepo.getAllByBoardId(ctx.db, card.boardId),
         boardFieldRepo.getValuesForCardWithPublicIds(ctx.db, card.id),
+        boardFieldRepo.getAssigneesForCard(ctx.db, card.id),
       ]);
 
       return fields.map(({ publicId, name, isOptional, options }) => {
@@ -307,6 +334,7 @@ export const boardFieldRouter = createTRPCRouter({
         const selected = options.find(
           (o) => o.publicId === stored?.optionPublicId,
         );
+        const assignee = assignees.find((a) => a.fieldPublicId === publicId);
 
         return {
           publicId,
@@ -314,8 +342,91 @@ export const boardFieldRouter = createTRPCRouter({
           isOptional,
           options,
           selectedOptionPublicId: selected?.publicId ?? null,
+          assignee: assignee ? toAssignee(assignee) : null,
         };
       });
+    }),
+  setAssignee: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Set who is in charge of a field on a card",
+        method: "PUT",
+        path: "/cards/{cardPublicId}/fields/{fieldPublicId}/assignee",
+        description:
+          "Chooses the workspace member in charge of this field (step) on the card, or nobody with a null memberPublicId. Automations can notify them.",
+        tags: ["Fields"],
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        cardPublicId: z.string().min(12),
+        fieldPublicId: z.string().length(12),
+        memberPublicId: z.string().length(12).nullable(),
+      }),
+    )
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = requireUser(ctx.user?.id);
+      const card = await boardFieldRepo.getCardContext(
+        ctx.db,
+        input.cardPublicId,
+      );
+
+      if (!card)
+        throw new TRPCError({
+          message: `Card with public ID ${input.cardPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+      await assertCanEdit(
+        ctx.db,
+        userId,
+        card.workspaceId,
+        "card:edit",
+        card.createdBy,
+      );
+
+      const field = await boardFieldRepo.getByPublicId(
+        ctx.db,
+        input.fieldPublicId,
+      );
+      if (!field || field.boardId !== card.boardId)
+        throw new TRPCError({
+          message: `Field with public ID ${input.fieldPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      if (input.memberPublicId === null) {
+        await boardFieldRepo.clearCardAssignee(ctx.db, {
+          cardId: card.id,
+          fieldId: field.id,
+        });
+        return { success: true };
+      }
+
+      const member = await memberRepo.getByPublicId(
+        ctx.db,
+        input.memberPublicId,
+      );
+      // Only members of the card's own workspace can be put in charge.
+      if (
+        !member ||
+        member.workspaceId !== card.workspaceId ||
+        member.deletedAt
+      )
+        throw new TRPCError({
+          message: `Member with public ID ${input.memberPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      await boardFieldRepo.setCardAssignee(ctx.db, {
+        cardId: card.id,
+        fieldId: field.id,
+        workspaceMemberId: member.id,
+        updatedBy: userId,
+      });
+
+      return { success: true };
     }),
   setValue: protectedProcedure
     .meta({
@@ -344,6 +455,8 @@ export const boardFieldRouter = createTRPCRouter({
         changedFields: z.array(
           z.object({ fieldName: z.string(), optionName: z.string() }),
         ),
+        // Fields whose person in charge was sent a notification.
+        notifiedFields: z.array(z.string()),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -388,7 +501,8 @@ export const boardFieldRouter = createTRPCRouter({
       const result: {
         movedToList: { publicId: string; name: string } | null;
         changedFields: { fieldName: string; optionName: string }[];
-      } = { movedToList: null, changedFields: [] };
+        notifiedFields: string[];
+      } = { movedToList: null, changedFields: [], notifiedFields: [] };
 
       if (!option) {
         await boardFieldRepo.clearCardValue(ctx.db, {
@@ -420,9 +534,21 @@ export const boardFieldRouter = createTRPCRouter({
       // Only the user's own change triggers rules: a field set by a rule
       // doesn't trigger further rules, so rules can never loop.
       let currentListId = card.listId;
+      const notifyUserIds = new Set<string>();
 
       for (const action of actions) {
-        if (action.kind === "set") {
+        if (action.kind === "notify") {
+          const assigneeUserId = await boardFieldRepo.getAssigneeUserId(
+            ctx.db,
+            { cardId: card.id, fieldId: action.field.id },
+          );
+          // Nobody in charge, or it's the person making the change: no one
+          // to tell.
+          if (assigneeUserId && assigneeUserId !== userId) {
+            notifyUserIds.add(assigneeUserId);
+            result.notifiedFields.push(action.field.name);
+          }
+        } else if (action.kind === "set") {
           await boardFieldRepo.setCardValue(ctx.db, {
             cardId: card.id,
             fieldId: action.field.id,
@@ -454,6 +580,16 @@ export const boardFieldRouter = createTRPCRouter({
         }
       }
 
+      if (notifyUserIds.size > 0) {
+        const by = ctx.user?.name?.trim();
+        await sendPush(ctx.db, [...notifyUserIds], {
+          title: `${field.name} → ${option.name}`,
+          body: `${card.title} · ${card.boardName}${by ? ` (${by})` : ""}`,
+          url: `/cards/${input.cardPublicId}`,
+          tag: `${input.cardPublicId}-${field.publicId}`,
+        });
+      }
+
       return result;
     }),
   boardValues: protectedProcedure
@@ -479,6 +615,12 @@ export const boardFieldRouter = createTRPCRouter({
             optionPublicId: z.string(),
           }),
         ),
+        assignees: z.array(
+          assigneeSchema.extend({
+            cardPublicId: z.string(),
+            fieldPublicId: z.string(),
+          }),
+        ),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -486,9 +628,10 @@ export const boardFieldRouter = createTRPCRouter({
       const board = await getBoard(ctx.db, input.boardPublicId);
       await assertPermission(ctx.db, userId, board.workspaceId, "board:view");
 
-      const [fields, values] = await Promise.all([
+      const [fields, values, assignees] = await Promise.all([
         boardFieldRepo.getAllByBoardId(ctx.db, board.id),
         boardFieldRepo.getValuesForBoard(ctx.db, board.id),
+        boardFieldRepo.getAssigneesForBoard(ctx.db, board.id),
       ]);
 
       return {
@@ -499,6 +642,11 @@ export const boardFieldRouter = createTRPCRouter({
           options,
         })),
         values,
+        assignees: assignees.map((a) => ({
+          cardPublicId: a.cardPublicId,
+          fieldPublicId: a.fieldPublicId,
+          ...toAssignee(a),
+        })),
       };
     }),
   automations: protectedProcedure
@@ -528,7 +676,7 @@ export const boardFieldRouter = createTRPCRouter({
         method: "POST",
         path: "/boards/{boardPublicId}/automations",
         description:
-          "When the field changes to the option, either the card moves to listPublicId, or setFieldPublicId is set to setOptionPublicId. Send one of the two.",
+          "When the field changes to the option, either the card moves to listPublicId, setFieldPublicId is set to setOptionPublicId, or the person in charge of notifyFieldPublicId on that card gets a notification. Send one of the three.",
         tags: ["Fields"],
         protect: true,
       },
@@ -541,6 +689,7 @@ export const boardFieldRouter = createTRPCRouter({
         listPublicId: z.string().min(12).optional(),
         setFieldPublicId: z.string().length(12).optional(),
         setOptionPublicId: z.string().length(12).optional(),
+        notifyFieldPublicId: z.string().length(12).optional(),
       }),
     )
     .output(z.object({ publicId: z.string() }))
@@ -551,10 +700,11 @@ export const boardFieldRouter = createTRPCRouter({
 
       const isMove = !!input.listPublicId;
       const isSet = !!input.setFieldPublicId && !!input.setOptionPublicId;
+      const isNotify = !!input.notifyFieldPublicId;
 
-      if (isMove === isSet)
+      if ([isMove, isSet, isNotify].filter(Boolean).length !== 1)
         throw new TRPCError({
-          message: `Send either listPublicId, or setFieldPublicId and setOptionPublicId`,
+          message: `Send either listPublicId, setFieldPublicId and setOptionPublicId, or notifyFieldPublicId`,
           code: "BAD_REQUEST",
         });
 
@@ -576,8 +726,22 @@ export const boardFieldRouter = createTRPCRouter({
       let listId: number | null = null;
       let setFieldId: number | null = null;
       let setOptionId: number | null = null;
+      let notifyFieldId: number | null = null;
 
-      if (input.listPublicId) {
+      if (input.notifyFieldPublicId) {
+        // Notifying the person in charge of the trigger field itself is
+        // allowed (e.g. Diseño → Modificaciones tells the designer).
+        const notifyField = await boardFieldRepo.getByPublicId(
+          ctx.db,
+          input.notifyFieldPublicId,
+        );
+        if (!notifyField || notifyField.boardId !== board.id)
+          throw new TRPCError({
+            message: `Field to notify not found on this board`,
+            code: "NOT_FOUND",
+          });
+        notifyFieldId = notifyField.id;
+      } else if (input.listPublicId) {
         const list = await listRepo.getByPublicId(ctx.db, input.listPublicId);
         if (!list || list.boardId !== board.id)
           throw new TRPCError({
@@ -614,6 +778,7 @@ export const boardFieldRouter = createTRPCRouter({
         listId,
         setFieldId,
         setOptionId,
+        notifyFieldId,
         createdBy: userId,
       });
 

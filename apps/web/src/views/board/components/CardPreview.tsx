@@ -39,10 +39,17 @@ export default function CardPreview({ card, cardPrefix }: CardPreviewProps) {
     const option = field.options.find(
       (o) => o.publicId === value?.optionPublicId,
     );
+    const assignee = boardValues.data.assignees.find(
+      (a) =>
+        a.cardPublicId === card.publicId && a.fieldPublicId === field.publicId,
+    );
 
     return {
       publicId: field.publicId,
       name: field.name,
+      assignee: assignee
+        ? { name: assignee.name, email: assignee.email, image: assignee.image }
+        : null,
       option: option
         ? {
             name: option.name,

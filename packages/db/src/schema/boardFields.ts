@@ -16,6 +16,7 @@ import { boards } from "./boards";
 import { cards } from "./cards";
 import { lists } from "./lists";
 import { users } from "./users";
+import { workspaceMembers } from "./workspaces";
 
 // Impeesa: custom fields per board, like ClickUp's. For now every field is a
 // dropdown: a name plus coloured options (e.g. Diseño: Pendiente / Haciendo /
@@ -83,9 +84,32 @@ export const cardFieldValues = pgTable(
   (table) => [primaryKey({ columns: [table.cardId, table.fieldId] })],
 ).enableRLS();
 
+// Impeesa: who takes care of each field (step) on a card, e.g. which
+// designer does Diseño. Rules can notify "the person in charge of <field>".
+export const cardFieldAssignees = pgTable(
+  "card_field_assignee",
+  {
+    cardId: bigint("cardId", { mode: "number" })
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    fieldId: bigint("fieldId", { mode: "number" })
+      .notNull()
+      .references(() => boardFields.id, { onDelete: "cascade" }),
+    workspaceMemberId: bigint("workspaceMemberId", { mode: "number" })
+      .notNull()
+      .references(() => workspaceMembers.id, { onDelete: "cascade" }),
+    updatedBy: uuid("updatedBy").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.cardId, table.fieldId] })],
+).enableRLS();
+
 // Impeesa: "when <field> changes to <option>, <action>". The action is
-// either moving the card to <list> (listId) or setting another field of the
-// card to an option (setFieldId + setOptionId); exactly one of them is set.
+// moving the card to <list> (listId), setting another field of the card to
+// an option (setFieldId + setOptionId), or notifying the person in charge of
+// a field on that card (notifyFieldId); exactly one of them is set.
 export const boardAutomations = pgTable(
   "board_automation",
   {
@@ -109,6 +133,10 @@ export const boardAutomations = pgTable(
     ),
     setOptionId: bigint("setOptionId", { mode: "number" }).references(
       () => boardFieldOptions.id,
+      { onDelete: "cascade" },
+    ),
+    notifyFieldId: bigint("notifyFieldId", { mode: "number" }).references(
+      () => boardFields.id,
       { onDelete: "cascade" },
     ),
     isActive: boolean("isActive").notNull().default(true),
@@ -183,6 +211,29 @@ export const boardAutomationsRelations = relations(
       fields: [boardAutomations.setOptionId],
       references: [boardFieldOptions.id],
       relationName: "automationSetOption",
+    }),
+    notifyField: one(boardFields, {
+      fields: [boardAutomations.notifyFieldId],
+      references: [boardFields.id],
+      relationName: "automationNotifyField",
+    }),
+  }),
+);
+
+export const cardFieldAssigneesRelations = relations(
+  cardFieldAssignees,
+  ({ one }) => ({
+    card: one(cards, {
+      fields: [cardFieldAssignees.cardId],
+      references: [cards.id],
+    }),
+    field: one(boardFields, {
+      fields: [cardFieldAssignees.fieldId],
+      references: [boardFields.id],
+    }),
+    member: one(workspaceMembers, {
+      fields: [cardFieldAssignees.workspaceMemberId],
+      references: [workspaceMembers.id],
     }),
   }),
 );

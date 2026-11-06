@@ -38,6 +38,12 @@ const Card = ({
     publicId: string;
     name: string;
     option: { name: string; colourCode: string | null; isDone: boolean } | null;
+    // Who is in charge of this step on the card.
+    assignee?: {
+      name: string | null;
+      email: string;
+      image: string | null;
+    } | null;
     countsForProgress: boolean;
   }[];
   members: {
@@ -108,16 +114,33 @@ const Card = ({
               <span className="truncate text-light-800 dark:text-dark-800">
                 {field.name}
               </span>
-              {field.option ? (
-                <span className="flex shrink-0 items-center gap-1 text-light-900 dark:text-dark-900">
-                  <LabelIcon colourCode={field.option.colourCode} />
-                  {field.option.name}
-                </span>
-              ) : (
-                <span className="shrink-0 text-light-700 dark:text-dark-800">
-                  –
-                </span>
-              )}
+              <span className="flex shrink-0 items-center gap-1.5">
+                {field.option ? (
+                  <span className="flex items-center gap-1 text-light-900 dark:text-dark-900">
+                    <LabelIcon colourCode={field.option.colourCode} />
+                    {field.option.name}
+                  </span>
+                ) : (
+                  <span className="text-light-700 dark:text-dark-800">–</span>
+                )}
+                {field.assignee && (
+                  <span
+                    title={field.assignee.name ?? field.assignee.email}
+                    className="flex"
+                  >
+                    <Avatar
+                      size="xs"
+                      name={field.assignee.name ?? ""}
+                      email={field.assignee.email}
+                      imageUrl={
+                        field.assignee.image
+                          ? getAvatarUrl(field.assignee.image)
+                          : undefined
+                      }
+                    />
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>

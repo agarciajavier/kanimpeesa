@@ -5,9 +5,12 @@ import {
   boardAutomations,
   boardFieldOptions,
   boardFields,
+  cardFieldAssignees,
   cardFieldValues,
   cards,
   lists,
+  users,
+  workspaceMembers,
 } from "@kan/db/schema";
 import { generateUID } from "@kan/shared/utils";
 
@@ -230,6 +233,7 @@ export const softDelete = async (db: dbClient, fieldId: number) => {
         or(
           eq(boardAutomations.fieldId, fieldId),
           eq(boardAutomations.setFieldId, fieldId),
+          eq(boardAutomations.notifyFieldId, fieldId),
         ),
       );
   });
@@ -265,12 +269,12 @@ export const reorder = async (
 
 export const getCardContext = async (db: dbClient, cardPublicId: string) => {
   const card = await db.query.cards.findFirst({
-    columns: { id: true, listId: true, createdBy: true },
+    columns: { id: true, title: true, listId: true, createdBy: true },
     where: and(eq(cards.publicId, cardPublicId), isNull(cards.deletedAt)),
     with: {
       list: {
         columns: { boardId: true },
-        with: { board: { columns: { workspaceId: true } } },
+        with: { board: { columns: { workspaceId: true, name: true } } },
       },
     },
   });
@@ -278,9 +282,11 @@ export const getCardContext = async (db: dbClient, cardPublicId: string) => {
   return card
     ? {
         id: card.id,
+        title: card.title,
         listId: card.listId,
         createdBy: card.createdBy,
         boardId: card.list.boardId,
+        boardName: card.list.board.name,
         workspaceId: card.list.board.workspaceId,
       }
     : null;
@@ -350,6 +356,117 @@ export const clearCardValue = (
     );
 };
 
+// The person in charge of each field (step) of a card. Members removed
+// from the workspace are left out.
+const assigneeColumns = {
+  fieldPublicId: boardFields.publicId,
+  memberPublicId: workspaceMembers.publicId,
+  email: workspaceMembers.email,
+  name: users.name,
+  image: users.image,
+};
+
+export const getAssigneesForCard = (db: dbClient, cardId: number) => {
+  return db
+    .select(assigneeColumns)
+    .from(cardFieldAssignees)
+    .innerJoin(boardFields, eq(boardFields.id, cardFieldAssignees.fieldId))
+    .innerJoin(
+      workspaceMembers,
+      eq(workspaceMembers.id, cardFieldAssignees.workspaceMemberId),
+    )
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(
+      and(
+        eq(cardFieldAssignees.cardId, cardId),
+        isNull(workspaceMembers.deletedAt),
+      ),
+    );
+};
+
+export const getAssigneesForBoard = (db: dbClient, boardId: number) => {
+  return db
+    .select({ cardPublicId: cards.publicId, ...assigneeColumns })
+    .from(cardFieldAssignees)
+    .innerJoin(cards, eq(cards.id, cardFieldAssignees.cardId))
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boardFields, eq(boardFields.id, cardFieldAssignees.fieldId))
+    .innerJoin(
+      workspaceMembers,
+      eq(workspaceMembers.id, cardFieldAssignees.workspaceMemberId),
+    )
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(
+      and(
+        eq(lists.boardId, boardId),
+        isNull(cards.deletedAt),
+        isNull(boardFields.deletedAt),
+        isNull(workspaceMembers.deletedAt),
+      ),
+    );
+};
+
+export const setCardAssignee = async (
+  db: dbClient,
+  input: {
+    cardId: number;
+    fieldId: number;
+    workspaceMemberId: number;
+    updatedBy: string;
+  },
+) => {
+  await db
+    .insert(cardFieldAssignees)
+    .values({ ...input, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [cardFieldAssignees.cardId, cardFieldAssignees.fieldId],
+      set: {
+        workspaceMemberId: input.workspaceMemberId,
+        updatedBy: input.updatedBy,
+        updatedAt: new Date(),
+      },
+    });
+};
+
+export const clearCardAssignee = (
+  db: dbClient,
+  input: { cardId: number; fieldId: number },
+) => {
+  return db
+    .delete(cardFieldAssignees)
+    .where(
+      and(
+        eq(cardFieldAssignees.cardId, input.cardId),
+        eq(cardFieldAssignees.fieldId, input.fieldId),
+      ),
+    );
+};
+
+// The account behind the person in charge of a field, if they have one and
+// are still in the workspace.
+export const getAssigneeUserId = async (
+  db: dbClient,
+  input: { cardId: number; fieldId: number },
+) => {
+  const [row] = await db
+    .select({ userId: workspaceMembers.userId })
+    .from(cardFieldAssignees)
+    .innerJoin(
+      workspaceMembers,
+      eq(workspaceMembers.id, cardFieldAssignees.workspaceMemberId),
+    )
+    .where(
+      and(
+        eq(cardFieldAssignees.cardId, input.cardId),
+        eq(cardFieldAssignees.fieldId, input.fieldId),
+        isNull(workspaceMembers.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.userId ?? null;
+};
+
 export const getValuesForCards = async (db: dbClient, cardIds: number[]) => {
   if (cardIds.length === 0) return [];
 
@@ -416,6 +533,9 @@ export const getAutomationsByBoardId = async (
           deletedAt: true,
         },
       },
+      notifyField: {
+        columns: { publicId: true, name: true, deletedAt: true },
+      },
     },
   });
 
@@ -429,7 +549,8 @@ export const getAutomationsByBoardId = async (
         !r.list?.deletedAt &&
         !r.setField?.deletedAt &&
         !r.setOption?.deletedAt &&
-        (r.list ?? (r.setField && r.setOption)),
+        !r.notifyField?.deletedAt &&
+        (r.list ?? (r.setField && r.setOption) ?? r.notifyField),
     )
     .map((r) => ({
       publicId: r.publicId,
@@ -451,6 +572,9 @@ export const getAutomationsByBoardId = async (
             colourCode: r.setOption.colourCode,
           }
         : null,
+      notifyField: r.notifyField
+        ? { publicId: r.notifyField.publicId, name: r.notifyField.name }
+        : null,
     }));
 };
 
@@ -468,7 +592,7 @@ export const getAutomationByPublicId = (
   });
 };
 
-// Exactly one action: listId, or setFieldId + setOptionId.
+// Exactly one action: listId, setFieldId + setOptionId, or notifyFieldId.
 export const createAutomation = async (
   db: dbClient,
   input: {
@@ -478,6 +602,7 @@ export const createAutomation = async (
     listId: number | null;
     setFieldId: number | null;
     setOptionId: number | null;
+    notifyFieldId: number | null;
     createdBy: string;
   },
 ) => {
@@ -527,6 +652,7 @@ export const findMatchingAutomations = async (
       },
       setField: { columns: { id: true, name: true, deletedAt: true } },
       setOption: { columns: { id: true, name: true, deletedAt: true } },
+      notifyField: { columns: { id: true, name: true, deletedAt: true } },
     },
   });
 
@@ -539,6 +665,8 @@ export const findMatchingAutomations = async (
       !r.setOption.deletedAt
     )
       return [{ kind: "set", field: r.setField, option: r.setOption }];
+    if (r.notifyField && !r.notifyField.deletedAt)
+      return [{ kind: "notify", field: r.notifyField }];
     return [];
   });
 };
@@ -549,4 +677,5 @@ export type AutomationAction =
       kind: "set";
       field: { id: number; name: string };
       option: { id: number; name: string };
-    };
+    }
+  | { kind: "notify"; field: { id: number; name: string } };

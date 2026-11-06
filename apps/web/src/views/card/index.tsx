@@ -17,6 +17,7 @@ import LabelIcon from "~/components/LabelIcon";
 import Modal from "~/components/modal";
 import { NewWorkspaceForm } from "~/components/NewWorkspaceForm";
 import { PageHead } from "~/components/PageHead";
+import { TimerButton } from "~/components/TimeTracker";
 import { EditYouTubeModal } from "~/components/YouTubeEmbed/EditYouTubeModal";
 import {
   setActivitySortOrder,
@@ -25,7 +26,6 @@ import {
 import { usePermissions } from "~/hooks/usePermissions";
 import { useModal } from "~/providers/modal";
 import { usePopup } from "~/providers/popup";
-import { TimerButton } from "~/components/TimeTracker";
 import { useWorkspace } from "~/providers/workspace";
 import { api } from "~/utils/api";
 import { getBoardReturnUrl } from "~/utils/board-return-url";
@@ -163,7 +163,22 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
         </div>
       )}
       {!isTemplate && (
-        <CardFields cardPublicId={cardId ?? ""} disabled={!canEdit} />
+        <CardFields
+          cardPublicId={cardId ?? ""}
+          members={
+            workspaceMembers
+              ?.filter((member) =>
+                selectedMembers?.some((m) => m.publicId === member.publicId),
+              )
+              .map((member) => ({
+                publicId: member.publicId,
+                email: member.user?.email ?? member.email,
+                name: member.user?.name ?? null,
+                image: member.user?.image ?? null,
+              })) ?? []
+          }
+          disabled={!canEdit}
+        />
       )}
       {!isTemplate && (
         <div className="mb-4 flex w-full flex-row">

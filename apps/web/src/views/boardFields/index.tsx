@@ -228,10 +228,11 @@ export default function BoardFieldsView() {
   const emptyRule = {
     fieldPublicId: "",
     optionPublicId: "",
-    action: "move" as "move" | "set",
+    action: "move" as "move" | "set" | "notify",
     listPublicId: "",
     setFieldPublicId: "",
     setOptionPublicId: "",
+    notifyFieldPublicId: "",
   };
   const [rule, setRule] = useState(emptyRule);
 
@@ -333,7 +334,9 @@ export default function BoardFieldsView() {
     !!rule.optionPublicId &&
     (rule.action === "move"
       ? !!rule.listPublicId
-      : !!rule.setFieldPublicId && !!rule.setOptionPublicId);
+      : rule.action === "notify"
+        ? !!rule.notifyFieldPublicId
+        : !!rule.setFieldPublicId && !!rule.setOptionPublicId);
 
   const addRule = () => {
     if (!boardPublicId) return;
@@ -345,11 +348,13 @@ export default function BoardFieldsView() {
     createAutomation.mutate(
       rule.action === "move"
         ? { ...trigger, listPublicId: rule.listPublicId }
-        : {
-            ...trigger,
-            setFieldPublicId: rule.setFieldPublicId,
-            setOptionPublicId: rule.setOptionPublicId,
-          },
+        : rule.action === "notify"
+          ? { ...trigger, notifyFieldPublicId: rule.notifyFieldPublicId }
+          : {
+              ...trigger,
+              setFieldPublicId: rule.setFieldPublicId,
+              setOptionPublicId: rule.setOptionPublicId,
+            },
     );
   };
 
@@ -522,8 +527,16 @@ export default function BoardFieldsView() {
           <h2 className={`${sectionTitleClass} mt-12`}>Automatizaciones</h2>
           <p className={helpClass}>
             Cuando un campo de una tarjeta cambia a cierta opción, la tarjeta se
-            mueve sola a una lista o cambia otro campo. Para hacer las dos
-            cosas, armá dos reglas con el mismo &quot;Cuando&quot;.
+            mueve sola a una lista, cambia otro campo o le llega un aviso al
+            responsable de un paso. Para hacer varias cosas, armá varias reglas
+            con el mismo &quot;Cuando&quot;.
+          </p>
+          <p className={helpClass}>
+            El responsable de cada paso se elige en cada tarjeta, al lado del
+            campo, entre los miembros asignados. Así cada tarea avisa a su
+            propia gente. Para recibir avisos, cada persona toca &quot;Activar
+            avisos&quot; en el menú de la izquierda, una vez en cada
+            dispositivo.
           </p>
 
           <div className="space-y-2">
@@ -545,6 +558,11 @@ export default function BoardFieldsView() {
                   <>
                     <span>→ mover a</span>
                     <strong>{automation.list.name}</strong>
+                  </>
+                ) : automation.notifyField ? (
+                  <>
+                    <span>→ avisar al responsable de</span>
+                    <strong>{automation.notifyField.name}</strong>
                   </>
                 ) : (
                   <>
@@ -659,14 +677,33 @@ export default function BoardFieldsView() {
                     onChange={(e) =>
                       setRule({
                         ...rule,
-                        action: e.target.value as "move" | "set",
+                        action: e.target.value as "move" | "set" | "notify",
                       })
                     }
                   >
                     <option value="move">mover la tarjeta a</option>
                     <option value="set">cambiar el campo</option>
+                    <option value="notify">avisar al responsable de</option>
                   </select>
-                  {rule.action === "move" ? (
+                  {rule.action === "notify" ? (
+                    <select
+                      className={`${inputClass} w-auto`}
+                      value={rule.notifyFieldPublicId}
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          notifyFieldPublicId: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">elegí un campo</option>
+                      {fields.data?.map((f) => (
+                        <option key={f.publicId} value={f.publicId}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : rule.action === "move" ? (
                     <select
                       className={`${inputClass} w-auto`}
                       value={rule.listPublicId}
