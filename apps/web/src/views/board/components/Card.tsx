@@ -13,6 +13,22 @@ import CircularProgress from "~/components/CircularProgress";
 import LabelIcon from "~/components/LabelIcon";
 import { useLocalisation } from "~/hooks/useLocalisation";
 import { getAvatarUrl } from "~/utils/helpers";
+import BoardFieldSelect from "./BoardFieldSelect";
+
+function FieldValue({
+  option,
+}: {
+  option: { name: string; colourCode: string | null } | null;
+}) {
+  return option ? (
+    <span className="flex items-center gap-1 text-light-900 dark:text-dark-900">
+      <LabelIcon colourCode={option.colourCode} />
+      {option.name}
+    </span>
+  ) : (
+    <span className="text-light-700 dark:text-dark-800">–</span>
+  );
+}
 
 const Card = ({
   title,
@@ -26,6 +42,7 @@ const Card = ({
   dueDate,
   client,
   fields,
+  onFieldChange,
   timer,
 }: {
   title: string;
@@ -45,7 +62,15 @@ const Card = ({
       image: string | null;
     } | null;
     countsForProgress: boolean;
+    // Set when the field can be changed from the board.
+    options?: { publicId: string; name: string; colourCode: string | null }[];
+    selectedOptionPublicId?: string | null;
   }[];
+  // Impeesa: change a field without opening the card (only for editors).
+  onFieldChange?: (
+    fieldPublicId: string,
+    optionPublicId: string | null,
+  ) => void;
   members: {
     publicId: string;
     email: string;
@@ -115,13 +140,21 @@ const Card = ({
                 {field.name}
               </span>
               <span className="flex shrink-0 items-center gap-1.5">
-                {field.option ? (
-                  <span className="flex items-center gap-1 text-light-900 dark:text-dark-900">
-                    <LabelIcon colourCode={field.option.colourCode} />
-                    {field.option.name}
-                  </span>
+                {onFieldChange && field.options ? (
+                  <BoardFieldSelect
+                    fieldName={field.name}
+                    options={field.options}
+                    selectedOptionPublicId={
+                      field.selectedOptionPublicId ?? null
+                    }
+                    onSelect={(optionPublicId) =>
+                      onFieldChange(field.publicId, optionPublicId)
+                    }
+                  >
+                    <FieldValue option={field.option} />
+                  </BoardFieldSelect>
                 ) : (
-                  <span className="text-light-700 dark:text-dark-800">–</span>
+                  <FieldValue option={field.option} />
                 )}
                 {field.assignee && (
                   <span

@@ -131,7 +131,10 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
     }) ?? [];
 
   return (
-    <div className="h-full w-[360px] border-l-[1px] border-light-300 bg-light-50 p-8 text-light-900 dark:border-dark-300 dark:bg-dark-50 dark:text-dark-900">
+    // Impeesa: scrolls, with room at the bottom, so that with many fields the
+    // last ones and the menus they open (or the due-date calendar) can be
+    // reached.
+    <div className="h-full w-[360px] overflow-y-auto border-l-[1px] border-light-300 bg-light-50 p-8 pb-64 text-light-900 dark:border-dark-300 dark:bg-dark-50 dark:text-dark-900">
       <div className="mb-4 flex w-full flex-row pt-[18px]">
         <p className="my-2 mb-2 w-[100px] text-sm font-medium">{t`List`}</p>
         <ListSelector
