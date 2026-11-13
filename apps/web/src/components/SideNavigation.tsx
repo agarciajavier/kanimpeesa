@@ -142,6 +142,19 @@ export default function SideNavigation({
           description: "Ir a clientes",
         },
       },
+      // Impeesa: client onboarding (see views/forms).
+      {
+        name: "Forms",
+        href: "/forms",
+        icon: isDarkMode ? templatesIconDark : templatesIconLight,
+        keyboardShortcut: {
+          type: "SEQUENCE",
+          strokes: [{ key: "G" }, { key: "F" }],
+          action: () => router.push("/forms"),
+          group: "NAVIGATION",
+          description: "Ir a forms",
+        },
+      },
       // Impeesa: time and profitability stats (see views/stats).
       ...(canSeeStats
         ? [

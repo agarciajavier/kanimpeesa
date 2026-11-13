@@ -1,12 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createNextApiHandler } from "@trpc/server/adapters/next";
 
+import { kickWorker } from "@kan/api/onboarding";
 import { appRouter } from "@kan/api/root";
 import { createTRPCContext } from "@kan/api/trpc-context";
 import { withRateLimit } from "@kan/api/utils/rateLimit";
 import { createTRPCRateLimitResponder } from "@kan/api/utils/trpcRateLimit";
 
 import { env } from "~/env";
+
+// Impeesa: runs onboarding jobs left pending (retries, a restart) as soon as
+// the server answers its first request.
+kickWorker();
 
 const nextApiHandler = createNextApiHandler({
   router: appRouter,

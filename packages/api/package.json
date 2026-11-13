@@ -12,6 +12,14 @@
       "types": "./src/root.ts",
       "default": "./src/root.ts"
     },
+    "./onboarding/adminForm": {
+      "types": "./src/onboarding/adminForm.ts",
+      "default": "./src/onboarding/adminForm.ts"
+    },
+    "./onboarding": {
+      "types": "./src/onboarding/index.ts",
+      "default": "./src/onboarding/index.ts"
+    },
     "./trpc": {
       "types": "./src/trpc.ts",
       "default": "./src/trpc.ts"

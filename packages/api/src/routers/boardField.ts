@@ -4,14 +4,12 @@ import { z } from "zod";
 import type { dbClient } from "@kan/db/client";
 import * as boardRepo from "@kan/db/repository/board.repo";
 import * as boardFieldRepo from "@kan/db/repository/boardField.repo";
-import * as cardRepo from "@kan/db/repository/card.repo";
-import * as cardActivityRepo from "@kan/db/repository/cardActivity.repo";
 import * as listRepo from "@kan/db/repository/list.repo";
 import * as memberRepo from "@kan/db/repository/member.repo";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { applyCardFieldValue } from "../utils/fieldAutomation";
 import { assertCanEdit, assertPermission } from "../utils/permissions";
-import { sendPush } from "../utils/push";
 
 // Impeesa: board custom fields (dropdowns) and the automations that move a
 // card to a list when one of its fields changes (see db/schema/boardFields.ts).
@@ -498,99 +496,14 @@ export const boardFieldRouter = createTRPCRouter({
           code: "NOT_FOUND",
         });
 
-      const result: {
-        movedToList: { publicId: string; name: string } | null;
-        changedFields: { fieldName: string; optionName: string }[];
-        notifiedFields: string[];
-      } = { movedToList: null, changedFields: [], notifiedFields: [] };
-
-      if (!option) {
-        await boardFieldRepo.clearCardValue(ctx.db, {
-          cardId: card.id,
-          fieldId: field.id,
-        });
-        return result;
-      }
-
-      const values = await boardFieldRepo.getValuesForCard(ctx.db, card.id);
-      const previousOptionId = values.find(
-        (v) => v.fieldId === field.id,
-      )?.optionId;
-
-      await boardFieldRepo.setCardValue(ctx.db, {
-        cardId: card.id,
-        fieldId: field.id,
-        optionId: option.id,
-        updatedBy: userId,
+      return applyCardFieldValue(ctx.db, {
+        card,
+        cardPublicId: input.cardPublicId,
+        field,
+        option: option ?? null,
+        userId,
+        userName: ctx.user?.name,
       });
-
-      if (previousOptionId === option.id) return result;
-
-      const actions = await boardFieldRepo.findMatchingAutomations(ctx.db, {
-        fieldId: field.id,
-        optionId: option.id,
-      });
-
-      // Only the user's own change triggers rules: a field set by a rule
-      // doesn't trigger further rules, so rules can never loop.
-      let currentListId = card.listId;
-      const notifyUserIds = new Set<string>();
-
-      for (const action of actions) {
-        if (action.kind === "notify") {
-          const assigneeUserId = await boardFieldRepo.getAssigneeUserId(
-            ctx.db,
-            { cardId: card.id, fieldId: action.field.id },
-          );
-          // Nobody in charge, or it's the person making the change: no one
-          // to tell.
-          if (assigneeUserId && assigneeUserId !== userId) {
-            notifyUserIds.add(assigneeUserId);
-            result.notifiedFields.push(action.field.name);
-          }
-        } else if (action.kind === "set") {
-          await boardFieldRepo.setCardValue(ctx.db, {
-            cardId: card.id,
-            fieldId: action.field.id,
-            optionId: action.option.id,
-            updatedBy: userId,
-          });
-          result.changedFields.push({
-            fieldName: action.field.name,
-            optionName: action.option.name,
-          });
-        } else if (action.list.id !== currentListId) {
-          await cardRepo.reorder(ctx.db, {
-            cardId: card.id,
-            newListId: action.list.id,
-            newIndex: undefined,
-          });
-          await cardActivityRepo.create(ctx.db, {
-            type: "card.updated.list",
-            cardId: card.id,
-            fromListId: currentListId,
-            toListId: action.list.id,
-            createdBy: userId,
-          });
-          currentListId = action.list.id;
-          result.movedToList = {
-            publicId: action.list.publicId,
-            name: action.list.name,
-          };
-        }
-      }
-
-      if (notifyUserIds.size > 0) {
-        const by = ctx.user?.name?.trim();
-        await sendPush(ctx.db, [...notifyUserIds], {
-          title: `${field.name} → ${option.name}`,
-          body: `${card.title} · ${card.boardName}${by ? ` (${by})` : ""}`,
-          url: `/cards/${input.cardPublicId}`,
-          tag: `${input.cardPublicId}-${field.publicId}`,
-        });
-      }
-
-      return result;
     }),
   boardValues: protectedProcedure
     .meta({
