@@ -1,6 +1,6 @@
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AdminAnswersInput,
@@ -19,102 +19,177 @@ import {
 import { api } from "~/utils/api";
 
 // Impeesa: the administrative form a client opens from the welcome email
-// (/f/<token>). No login: the long random token is the key. The questions
-// and their texts come from onboarding/adminForm.ts; the server validates
-// everything again.
+// (/f/<token>). One question per card, with the look of impeesamarketing.com
+// (dark background, gold accents). No login: the long random token is the
+// key. Questions and texts come from onboarding/adminForm.ts; the server
+// validates everything again.
 
-const BLUE = "#2E5469";
-const GOLD = "#AB8B4C";
+const C = {
+  bg: "#090a0f",
+  card: "#11131a",
+  line: "rgba(255,255,255,0.1)",
+  line2: "rgba(255,255,255,0.18)",
+  fg: "#edeef2",
+  muted: "#9ba1ae",
+  dim: "#858b99",
+  gold: "#ab8b48",
+  gold2: "#d1be93",
+};
 
 type Answers = Partial<Record<AdminField, string>>;
 
-function Question({
-  field,
-  required = true,
-  error,
-  children,
-}: {
+interface Step {
   field: AdminField;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  const text = ADMIN_TEXT[field];
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="text-[15px] font-medium text-gray-900">
-        {text.label}
-        {required && <span className="ml-1 text-red-600">*</span>}
-      </p>
-      {"help" in text && (
-        <p className="mt-1 text-sm text-gray-500">{text.help}</p>
-      )}
-      <div className="mt-3">{children}</div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </div>
-  );
+  kind: "text" | "email" | "tel" | "number" | "choice";
+  options?: readonly string[];
+  optional?: boolean;
 }
 
-const inputClass =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-[15px] text-gray-900 focus:border-[#2E5469] focus:outline-none focus:ring-1 focus:ring-[#2E5469]";
+// Questions shown, in order, given what was answered so far.
+function visibleSteps(a: Answers): Step[] {
+  const steps: Step[] = [
+    { field: "razonSocial", kind: "text" },
+    { field: "nombreFantasia", kind: "text" },
+    { field: "servicio", kind: "choice", options: SERVICES },
+    { field: "nombreContacto", kind: "text" },
+    { field: "telefono", kind: "tel" },
+    { field: "correoContacto", kind: "email" },
+    { field: "facturaMismoCorreo", kind: "choice", options: YES_NO },
+  ];
+  if (a.facturaMismoCorreo === "NO")
+    steps.push({ field: "correoFactura", kind: "email" });
+  steps.push({
+    field: "situacionFiscal",
+    kind: "choice",
+    options: TAX_STATUSES,
+  });
+  if (
+    a.situacionFiscal === "Responsable Inscripto" ||
+    a.situacionFiscal === "Monotributista"
+  )
+    steps.push({ field: "cuit", kind: "number" });
+  if (a.situacionFiscal === "Consumidor final (no inscripto en ARCA)")
+    steps.push({ field: "dni", kind: "text" });
+  if (a.situacionFiscal === "Residente fuera de Argentina")
+    steps.push({ field: "idFiscalExterior", kind: "text" });
+  steps.push({ field: "instagram", kind: "text", optional: true });
+  steps.push({ field: "tieneTienda", kind: "choice", options: STORE_YES_NO });
+  if (a.tieneTienda === "SI") {
+    steps.push({ field: "plataforma", kind: "choice", options: PLATFORMS });
+    if (a.plataforma === "Tienda nube")
+      steps.push({ field: "correoTiendanube", kind: "email" });
+    else if (a.plataforma && a.plataforma !== "Otras")
+      steps.push({ field: "correoTienda", kind: "email" });
+  }
+  return steps;
+}
 
-function Choice({
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  name: string;
-  options: readonly string[];
-  value: string | undefined;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      {options.map((option) => (
-        <label
-          key={option}
-          className="flex cursor-pointer items-center gap-2 text-[15px] text-gray-800"
-        >
-          <input
-            type="radio"
-            name={name}
-            checked={value === option}
-            onChange={() => onChange(option)}
-            className="h-4 w-4 accent-[#2E5469]"
-          />
-          {option}
-        </label>
-      ))}
-    </div>
-  );
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// The same rules as the server, checked as soon as the client moves on.
+function stepError(step: Step, value = ""): string | null {
+  const v = value.trim();
+  if (!v) return step.optional ? null : "Esta respuesta es obligatoria";
+  if (step.kind === "email" && !EMAIL.test(v)) return "Revisá el correo";
+  if (step.field === "cuit" && !/^\d{11}$/.test(v))
+    return "Tienen que ser los 11 números, sin guiones ni puntos";
+  if (step.field === "telefono" && v.replace(/\D/g, "").length < 6)
+    return "Revisá el teléfono";
+  return null;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="min-h-screen bg-[#f4f5f7] px-4 py-8 text-gray-900"
-      style={{ colorScheme: "light" }}
+      className="relative flex min-h-[100dvh] flex-col overflow-hidden px-4 py-6 sm:py-10"
+      style={{ background: C.bg, color: C.fg, colorScheme: "dark" }}
     >
       <Head>
         <title>Ficha inicial · Impeesa Marketing</title>
         <meta name="robots" content="noindex" />
+        <meta name="theme-color" content={C.bg} />
       </Head>
-      <div className="mx-auto max-w-[640px]">
-        <div
-          className="rounded-t-lg border-t-4 bg-white px-6 py-6"
-          style={{ borderColor: GOLD }}
+      <style>{`
+        .imp-grid{background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%,#000 30%,transparent 75%);mask-image:radial-gradient(ellipse 70% 60% at 50% 30%,#000 30%,transparent 75%)}
+        .imp-glow{background:radial-gradient(circle,rgba(171,139,72,.16),transparent 65%)}
+        .imp-glow-navy{background:radial-gradient(circle,rgba(44,82,106,.25),transparent 65%)}
+        @keyframes imp-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        @keyframes imp-back{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+        .imp-in{animation:imp-in .35s cubic-bezier(.2,.7,.2,1) both}
+        .imp-back{animation:imp-back .35s cubic-bezier(.2,.7,.2,1) both}
+        .imp-input::placeholder{color:#5b606c}
+        @media (prefers-reduced-motion:reduce){.imp-in,.imp-back{animation:none}}
+      `}</style>
+      <div className="imp-grid pointer-events-none absolute inset-0" />
+      <div className="imp-glow pointer-events-none absolute -right-48 -top-48 h-[520px] w-[520px] rounded-full" />
+      <div className="imp-glow-navy pointer-events-none absolute -bottom-56 -left-56 h-[560px] w-[560px] rounded-full" />
+
+      <header className="relative mx-auto mb-8 flex w-full max-w-[600px] items-center justify-between">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/impeesa-logo-blanco.webp"
+          alt="Impeesa Marketing"
+          className="h-9 w-auto"
+        />
+        <span
+          className="font-mono text-[11px] uppercase tracking-[0.14em]"
+          style={{ color: C.gold2 }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/email-logo.png"
-            alt="Impeesa Marketing"
-            className="h-10 w-auto"
-          />
-        </div>
+          Ficha inicial
+        </span>
+      </header>
+      <main className="relative mx-auto flex w-full max-w-[600px] flex-1 flex-col justify-center pb-10">
         {children}
-      </div>
+      </main>
     </div>
+  );
+}
+
+function Card({
+  children,
+  direction = "in",
+}: {
+  children: React.ReactNode;
+  direction?: "in" | "back";
+}) {
+  return (
+    <div
+      className={`relative overflow-hidden rounded-3xl border p-6 sm:p-9 ${direction === "back" ? "imp-back" : "imp-in"}`}
+      style={{ background: C.card, borderColor: C.line }}
+    >
+      <div className="imp-glow pointer-events-none absolute -right-40 -top-40 h-[380px] w-[380px] rounded-full" />
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
+
+function GoldButton({
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      className="inline-flex h-[46px] items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 text-[15px] font-semibold text-[#14110a] transition-[transform,background-color] duration-200 hover:-translate-y-px hover:!bg-[#e0cfa8] disabled:pointer-events-none disabled:opacity-40"
+      style={{ background: C.gold2 }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      className="inline-flex h-[46px] items-center justify-center gap-2 whitespace-nowrap rounded-full border bg-white/[0.02] px-5 text-[15px] font-semibold transition-[transform,border-color] duration-200 hover:-translate-y-px disabled:pointer-events-none disabled:opacity-30"
+      style={{ borderColor: C.line2, color: C.fg }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -127,232 +202,313 @@ export default function AdminFormPage() {
     { enabled: !!token, retry: false, refetchOnWindowFocus: false },
   );
   const submit = api.onboarding.submitAdministrativa.useMutation();
+
+  const [started, setStarted] = useState(false);
+  const [index, setIndex] = useState(0);
+  const [direction, setDirection] = useState<"in" | "back">("in");
   const [answers, setAnswers] = useState<Answers>({});
-  const [errors, setErrors] = useState<Partial<Record<AdminField, string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const set = (field: AdminField) => (value: string) =>
-    setAnswers((a) => ({ ...a, [field]: value }));
-  const textInput = (field: AdminField, type = "text") => (
-    <input
-      className={inputClass}
-      type={type}
-      value={answers[field] ?? ""}
-      onChange={(e) => set(field)(e.target.value)}
-      maxLength={field === "telefono" ? 50 : 320}
-    />
-  );
+  const steps = useMemo(() => visibleSteps(answers), [answers]);
+  const step = steps[Math.min(index, steps.length - 1)];
+  const isLast = index >= steps.length - 1;
+  const firstName = form.data?.firstName;
 
-  const fiscal = answers.situacionFiscal;
-  const needsCuit =
-    fiscal === "Responsable Inscripto" || fiscal === "Monotributista";
-  const platform =
-    answers.tieneTienda === "SI" ? answers.plataforma : undefined;
-  const firstName = useMemo(() => form.data?.firstName, [form.data]);
+  useEffect(() => {
+    if (started && step && step.kind !== "choice")
+      setTimeout(() => inputRef.current?.focus(), 60);
+  }, [started, index, step]);
+
+  const goTo = (target: number) => {
+    setDirection(target < index ? "back" : "in");
+    setError(null);
+    setIndex(target);
+  };
+
+  const send = (final: Answers) => {
+    const parsed = adminAnswersSchema.safeParse(final as AdminAnswersInput);
+    if (!parsed.success) {
+      // Shouldn't happen (every card was checked); go to the first problem.
+      const field = parsed.error.issues[0]?.path[0] as AdminField | undefined;
+      const at = visibleSteps(final).findIndex((s) => s.field === field);
+      if (at >= 0) goTo(at);
+      setError("Revisá esta respuesta");
+      return;
+    }
+    submit.mutate({ token, answers: final as AdminAnswersInput });
+  };
+
+  const next = (current: Answers = answers) => {
+    if (!step) return;
+    const problem = stepError(step, current[step.field]);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    // Recomputed: an answer may add or remove the following questions.
+    const nextSteps = visibleSteps(current);
+    const position = nextSteps.findIndex((s) => s.field === step.field);
+    if (position >= nextSteps.length - 1) send(current);
+    else goTo(position + 1);
+  };
+
+  const choose = (value: string) => {
+    if (!step) return;
+    const updated = { ...answers, [step.field]: value };
+    setAnswers(updated);
+    setError(null);
+    // A choice moves on by itself, after a short beat to see it marked. The
+    // last question waits for "Enviar ficha" instead of sending on its own.
+    const nextSteps = visibleSteps(updated);
+    if (
+      nextSteps.findIndex((s) => s.field === step.field) <
+      nextSteps.length - 1
+    )
+      setTimeout(() => next(updated), 220);
+  };
 
   if (!token || form.isLoading)
     return (
       <Shell>
-        <div className="rounded-b-lg bg-white px-6 pb-8 text-gray-500">
+        <p className="text-center text-sm" style={{ color: C.dim }}>
           Cargando…
-        </div>
+        </p>
       </Shell>
     );
 
   if (form.error)
     return (
       <Shell>
-        <div className="rounded-b-lg bg-white px-6 pb-8">
-          <p className="text-gray-800">
-            Este enlace no es válido. Escribinos respondiendo el correo que te
-            mandamos.
+        <Card>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Este enlace no es válido
+          </h1>
+          <p
+            className="mt-3 text-[15px] leading-relaxed"
+            style={{ color: C.muted }}
+          >
+            Escribinos respondiendo el correo que te mandamos y te pasamos uno
+            nuevo.
           </p>
-        </div>
+        </Card>
       </Shell>
     );
 
   if (form.data?.submitted || submit.data)
     return (
       <Shell>
-        <div className="rounded-b-lg bg-white px-6 pb-8">
-          <h1 className="text-xl font-semibold" style={{ color: BLUE }}>
+        <Card key="done">
+          <div
+            className="mb-6 grid h-12 w-12 place-items-center rounded-full border text-xl"
+            style={{
+              borderColor: `${C.gold2}80`,
+              color: C.gold2,
+              background: "rgba(171,139,72,.1)",
+            }}
+          >
+            ✓
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">
             ¡Gracias{firstName ? `, ${firstName}` : ""}!
           </h1>
-          <p className="mt-2 text-gray-700">
+          <p
+            className="mt-3 text-[16px] leading-relaxed"
+            style={{ color: C.muted }}
+          >
             Recibimos tu ficha inicial. En breve te llega un correo con los
             próximos pasos.
           </p>
-        </div>
+        </Card>
       </Shell>
     );
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = adminAnswersSchema.safeParse(answers as AdminAnswersInput);
-    if (!parsed.success) {
-      const next: typeof errors = {};
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0] as AdminField;
-        if (!next[field])
-          next[field] =
-            issue.code === "invalid_type" || issue.code === "invalid_enum_value"
-              ? "Obligatoria"
-              : issue.message;
-      }
-      setErrors(next);
-      return;
-    }
-    setErrors({});
-    submit.mutate({ token, answers: answers as AdminAnswersInput });
-  };
+  if (!started)
+    return (
+      <Shell>
+        <Card key="intro">
+          <span
+            className="font-mono text-[11px] uppercase tracking-[0.14em]"
+            style={{ color: C.gold2 }}
+          >
+            Ficha inicial
+          </span>
+          <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+            {firstName ? `Hola ${firstName}, ` : ""}empecemos.
+          </h1>
+          <p
+            className="mt-4 text-[16px] leading-relaxed"
+            style={{ color: C.muted }}
+          >
+            Son unas {steps.length} preguntas cortas, una por vez, con los datos
+            que necesitamos para empezar a trabajar: facturación, contacto y tu
+            tienda. Te lleva unos 3 minutos.
+          </p>
+          <div className="mt-8">
+            <GoldButton type="button" onClick={() => setStarted(true)}>
+              Empezar →
+            </GoldButton>
+          </div>
+        </Card>
+      </Shell>
+    );
+
+  if (!step) return null;
+  const text = ADMIN_TEXT[step.field];
+  const value = answers[step.field] ?? "";
 
   return (
     <Shell>
-      <div className="rounded-b-lg bg-white px-6 pb-6">
-        <h1 className="text-2xl font-semibold" style={{ color: BLUE }}>
-          Ficha inicial
-        </h1>
-        <p className="mt-2 text-gray-600">
-          {firstName ? `Hola ${firstName}, ` : ""}completá estos datos para que
-          podamos empezar a trabajar.
-        </p>
-        <p className="mt-2 text-sm text-red-600">* Obligatoria</p>
+      <div className="mb-5 flex gap-1.5" aria-hidden>
+        {steps.map((s, i) => (
+          <span
+            key={s.field}
+            className="h-1 flex-1 rounded-full transition-colors duration-300"
+            style={{
+              background: i <= index ? C.gold2 : "rgba(255,255,255,.08)",
+            }}
+          />
+        ))}
       </div>
 
-      <form className="mt-4 space-y-3" onSubmit={onSubmit} noValidate>
-        <Question field="razonSocial" error={errors.razonSocial}>
-          {textInput("razonSocial")}
-        </Question>
-        <Question field="nombreFantasia" error={errors.nombreFantasia}>
-          {textInput("nombreFantasia")}
-        </Question>
-        <Question field="servicio" error={errors.servicio}>
-          <Choice
-            name="servicio"
-            options={SERVICES}
-            value={answers.servicio}
-            onChange={set("servicio")}
-          />
-        </Question>
-        <Question field="nombreContacto" error={errors.nombreContacto}>
-          {textInput("nombreContacto")}
-        </Question>
-        <Question field="telefono" error={errors.telefono}>
-          {textInput("telefono", "tel")}
-        </Question>
-        <Question field="correoContacto" error={errors.correoContacto}>
-          {textInput("correoContacto", "email")}
-        </Question>
-        <Question field="facturaMismoCorreo" error={errors.facturaMismoCorreo}>
-          <Choice
-            name="facturaMismoCorreo"
-            options={YES_NO}
-            value={answers.facturaMismoCorreo}
-            onChange={set("facturaMismoCorreo")}
-          />
-        </Question>
-        {answers.facturaMismoCorreo === "NO" && (
-          <Question field="correoFactura" error={errors.correoFactura}>
-            {textInput("correoFactura", "email")}
-          </Question>
-        )}
-        <Question field="situacionFiscal" error={errors.situacionFiscal}>
-          <select
-            className={inputClass}
-            value={answers.situacionFiscal ?? ""}
-            onChange={(e) => set("situacionFiscal")(e.target.value)}
-          >
-            <option value="" disabled>
-              Seleccioná una opción
-            </option>
-            {TAX_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </Question>
-        {needsCuit && (
-          <Question field="cuit" error={errors.cuit}>
-            <input
-              className={inputClass}
-              inputMode="numeric"
-              value={answers.cuit ?? ""}
-              onChange={(e) => set("cuit")(e.target.value)}
-              maxLength={20}
-            />
-          </Question>
-        )}
-        {fiscal === "Consumidor final (no inscripto en ARCA)" && (
-          <Question field="dni" error={errors.dni}>
-            {textInput("dni")}
-          </Question>
-        )}
-        {fiscal === "Residente fuera de Argentina" && (
-          <Question field="idFiscalExterior" error={errors.idFiscalExterior}>
-            {textInput("idFiscalExterior")}
-          </Question>
-        )}
-        <Question field="instagram" required={false} error={errors.instagram}>
-          {textInput("instagram")}
-        </Question>
-        <Question field="tieneTienda" error={errors.tieneTienda}>
-          <Choice
-            name="tieneTienda"
-            options={STORE_YES_NO}
-            value={answers.tieneTienda}
-            onChange={set("tieneTienda")}
-          />
-        </Question>
-        {answers.tieneTienda === "SI" && (
-          <Question field="plataforma" error={errors.plataforma}>
-            <select
-              className={inputClass}
-              value={answers.plataforma ?? ""}
-              onChange={(e) => set("plataforma")(e.target.value)}
+      <Card key={step.field} direction={direction}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            next();
+          }}
+          noValidate
+        >
+          <span className="font-mono text-[13px]" style={{ color: C.dim }}>
+            {index + 1} / {steps.length}
+            {step.optional ? " · opcional" : ""}
+          </span>
+          <h2 className="mt-2 text-2xl font-bold leading-snug tracking-tight sm:text-[28px]">
+            {text.label}
+          </h2>
+          {"help" in text && (
+            <p
+              className="mt-2 text-[15px] leading-relaxed"
+              style={{ color: C.muted }}
             >
-              <option value="" disabled>
-                Seleccioná una opción
-              </option>
-              {PLATFORMS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </Question>
-        )}
-        {platform === "Tienda nube" && (
-          <Question field="correoTiendanube" error={errors.correoTiendanube}>
-            {textInput("correoTiendanube", "email")}
-          </Question>
-        )}
-        {platform && platform !== "Tienda nube" && platform !== "Otras" && (
-          <Question field="correoTienda" error={errors.correoTienda}>
-            {textInput("correoTienda", "email")}
-          </Question>
-        )}
+              {text.help}
+            </p>
+          )}
 
-        {Object.keys(errors).length > 0 && (
-          <p className="text-sm text-red-600">
-            Revisá las preguntas marcadas en rojo.
-          </p>
-        )}
-        {submit.error && (
-          <p className="text-sm text-red-600">
-            No se pudo enviar. Probá de nuevo en un momento.
-          </p>
-        )}
-        <div className="pb-10">
-          <button
-            type="submit"
-            disabled={submit.isPending}
-            className="rounded-md px-6 py-2.5 text-[15px] font-medium text-white disabled:opacity-60"
-            style={{ backgroundColor: BLUE }}
-          >
-            {submit.isPending ? "Enviando…" : "Enviar"}
-          </button>
-        </div>
-      </form>
+          <div className="mt-6">
+            {step.kind === "choice" ? (
+              <div
+                className={`grid gap-2.5 ${step.options && step.options.length > 3 ? "sm:grid-cols-2" : ""}`}
+              >
+                {step.options?.map((option) => {
+                  const pressed = value === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={pressed}
+                      onClick={() => choose(option)}
+                      className="flex items-center gap-3 rounded-[14px] border px-4 py-3.5 text-left text-[15px] transition-colors hover:!border-white/30"
+                      style={{
+                        borderColor: pressed ? `${C.gold2}99` : C.line,
+                        background: pressed
+                          ? "rgba(171,139,72,.1)"
+                          : "rgba(255,255,255,.02)",
+                        color: C.fg,
+                      }}
+                    >
+                      <span
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded-full border"
+                        style={{ borderColor: pressed ? C.gold2 : C.line2 }}
+                      >
+                        {pressed && (
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ background: C.gold2 }}
+                          />
+                        )}
+                      </span>
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <input
+                ref={inputRef}
+                className="imp-input h-14 w-full rounded-xl border bg-black/25 px-4 text-[17px] outline-none transition-colors focus:!border-[#d1be93]"
+                style={{
+                  borderColor: error ? "#f87171" : C.line2,
+                  color: C.fg,
+                }}
+                type={
+                  step.kind === "email"
+                    ? "email"
+                    : step.kind === "tel"
+                      ? "tel"
+                      : "text"
+                }
+                inputMode={step.kind === "number" ? "numeric" : undefined}
+                autoComplete={
+                  step.field === "correoContacto"
+                    ? "email"
+                    : step.field === "telefono"
+                      ? "tel"
+                      : step.field === "nombreContacto"
+                        ? "name"
+                        : "off"
+                }
+                maxLength={step.field === "telefono" ? 50 : 320}
+                value={value}
+                placeholder={
+                  step.optional ? "Podés dejarlo vacío" : "Escribí tu respuesta"
+                }
+                onChange={(e) => {
+                  setAnswers((a) => ({ ...a, [step.field]: e.target.value }));
+                  if (error) setError(null);
+                }}
+              />
+            )}
+            {error && (
+              <p className="mt-3 text-sm" style={{ color: "#f87171" }}>
+                {error}
+              </p>
+            )}
+            {submit.error && (
+              <p className="mt-3 text-sm" style={{ color: "#f87171" }}>
+                No se pudo enviar. Probá de nuevo en un momento.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-2.5">
+            <GhostButton
+              type="button"
+              disabled={index === 0}
+              onClick={() => goTo(index - 1)}
+            >
+              ← Atrás
+            </GhostButton>
+            {(step.kind !== "choice" || value) && (
+              <GoldButton type="submit" disabled={submit.isPending}>
+                {submit.isPending
+                  ? "Enviando…"
+                  : isLast
+                    ? "Enviar ficha"
+                    : "Siguiente →"}
+              </GoldButton>
+            )}
+          </div>
+          {step.kind !== "choice" && (
+            <p
+              className="mt-4 hidden text-xs sm:block"
+              style={{ color: C.dim }}
+            >
+              Apretá Enter ↵ para seguir
+            </p>
+          )}
+        </form>
+      </Card>
     </Shell>
   );
 }
