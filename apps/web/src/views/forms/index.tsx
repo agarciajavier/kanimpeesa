@@ -25,7 +25,10 @@ const STEPS: { label: string; kinds: string[] }[] = [
     kinds: ["welcome_email", "field:welcome_sent"],
   },
   { label: "Respuesta guardada", kinds: [] },
-  { label: "Tarjeta actualizada", kinds: ["field:ficha_done", "card_details"] },
+  {
+    label: "Cliente en Kan y tarjeta",
+    kinds: ["field:ficha_done", "card_details", "panel_client"],
+  },
   { label: "Cliente registrado (Sheet)", kinds: ["sheet_row"] },
   { label: "Carpeta preparada", kinds: ["drive_folder"] },
   {

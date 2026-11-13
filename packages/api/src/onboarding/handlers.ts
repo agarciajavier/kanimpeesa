@@ -4,8 +4,10 @@ import type { dbClient } from "@kan/db/client";
 import * as boardFieldRepo from "@kan/db/repository/boardField.repo";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as cardActivityRepo from "@kan/db/repository/cardActivity.repo";
+import * as clientRepo from "@kan/db/repository/client.repo";
 import {
   cards,
+  clients,
   onboardingClients,
   onboardingJobs,
   onboardingSubmissions,
@@ -248,6 +250,7 @@ registerHandler("drive_folder", async (db, job) => {
     kind: "card_details",
     dedupKey: `${client.id}:card_details:folder`,
   });
+  await enqueueJob(db, { onboardingClientId: client.id, kind: "panel_client" });
   await enqueueJob(db, {
     onboardingClientId: client.id,
     kind: "drive_share",
@@ -334,6 +337,83 @@ registerHandler("onboarding_email", async (db, job) => {
       kind: "field:folder_sent",
     });
   return { result: { ...sent, access: share.access } };
+});
+
+// --- Client in the panel (Clientes page) -----------------------------------
+
+// The business becomes a client of the panel, with its Drive folder, and the
+// card is linked to it (so the card shows "Carpeta de X"). An existing client
+// with the same name is reused, never duplicated. Test clients are named
+// "[PRUEBA] ..." so they're never mistaken for real ones.
+registerHandler("panel_client", async (db, job) => {
+  const client = await loadClient(db, job.onboardingClientId);
+  const a = await loadAdminAnswers(db, client.id);
+  const card = await cardOf(db, client);
+  if (!client.driveFolderUrl)
+    throw new RetryableError("La carpeta todavía no está creada");
+
+  const name =
+    `${client.isTest ? "[PRUEBA] " : ""}${a.nombreFantasia.trim()}`.slice(
+      0,
+      255,
+    );
+  const actor = client.createdBy ?? card.context.createdBy;
+  if (!actor)
+    throw new PermanentError("No sé a nombre de quién crear el cliente");
+
+  let panelClient = client.clientId
+    ? await db.query.clients.findFirst({
+        columns: { id: true, driveUrl: true },
+        where: and(eq(clients.id, client.clientId), isNull(clients.deletedAt)),
+      })
+    : undefined;
+  panelClient ??= await db.query.clients.findFirst({
+    columns: { id: true, driveUrl: true },
+    where: and(
+      eq(clients.workspaceId, client.workspaceId),
+      eq(clients.name, name),
+      isNull(clients.deletedAt),
+    ),
+  });
+  let created = false;
+  if (!panelClient) {
+    await clientRepo.create(db, {
+      name,
+      status: "starting",
+      type: a.servicio.startsWith("Asesoría") ? "advisory" : "management",
+      driveUrl: client.driveFolderUrl,
+      briefUrl: null,
+      summary: null,
+      workspaceId: client.workspaceId,
+      createdBy: actor,
+    });
+    panelClient = await db.query.clients.findFirst({
+      columns: { id: true, driveUrl: true },
+      where: and(
+        eq(clients.workspaceId, client.workspaceId),
+        eq(clients.name, name),
+        isNull(clients.deletedAt),
+      ),
+    });
+    created = true;
+  } else if (!panelClient.driveUrl) {
+    await db
+      .update(clients)
+      .set({ driveUrl: client.driveFolderUrl, updatedAt: new Date() })
+      .where(eq(clients.id, panelClient.id));
+  }
+  if (!panelClient)
+    throw new RetryableError("No se pudo crear el cliente del panel");
+
+  await db
+    .update(onboardingClients)
+    .set({ clientId: panelClient.id, updatedAt: new Date() })
+    .where(eq(onboardingClients.id, client.id));
+  await clientRepo.setCardClient(db, {
+    cardId: card.context.id,
+    clientId: panelClient.id,
+  });
+  return { result: { name, created } };
 });
 
 // --- Card title and description --------------------------------------------
