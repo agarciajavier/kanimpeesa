@@ -36,6 +36,11 @@ const STEPS: { label: string; kinds: string[] }[] = [
     kinds: ["drive_share", "field:folder_shared", "field:folder_sent"],
   },
   { label: "Segundo correo", kinds: ["onboarding_email"] },
+  { label: "Ficha estratégica", kinds: [] },
+  {
+    label: "Brief de marca",
+    kinds: ["brief_summary", "brief_doc", "field:brief_done"],
+  },
 ];
 
 const ACCESS_TEXT: Record<string, string> = {
@@ -102,6 +107,10 @@ function stepDetail(label: string, client: OnboardingClient, jobs: Job[]) {
       | undefined;
     return r?.cliCode ? `${r.cliCode} · fila ${r.rowNumber}` : null;
   }
+  if (label === "Brief de marca") {
+    const r = done("brief_doc")?.result as { url?: string } | undefined;
+    return r?.url ? "Documento en la carpeta" : null;
+  }
   if (label === "Compartido") {
     const r = done("drive_share")?.result as
       | { access?: string; email?: string }
@@ -112,6 +121,13 @@ function stepDetail(label: string, client: OnboardingClient, jobs: Job[]) {
   }
   return null;
 }
+
+const briefUrl = (client: OnboardingClient) => {
+  const job = client.jobs.find(
+    (j) => j.kind === "brief_doc" && j.status === "done",
+  );
+  return (job?.result as { url?: string } | null)?.url ?? null;
+};
 
 function ClientCard({ client }: { client: OnboardingClient }) {
   const utils = api.useUtils();
@@ -163,22 +179,61 @@ function ClientCard({ client }: { client: OnboardingClient }) {
               Carpeta
             </a>
           )}
+          <a
+            className="underline"
+            href={client.adminLink}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ficha inicial
+          </a>
+          <a
+            className="underline"
+            href={client.strategicLink}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ficha estratégica
+          </a>
+          {briefUrl(client) && (
+            <a
+              className="underline"
+              href={briefUrl(client) ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Brief
+            </a>
+          )}
         </div>
       </div>
 
       <ul className="mt-3 space-y-1.5">
         {STEPS.map((step) => {
           const jobs = client.jobs.filter((j) => step.kinds.includes(j.kind));
+          // The two form steps come from the answers, not from jobs.
           const state: StepState =
             step.label === "Respuesta guardada"
               ? client.adminSubmittedAt
                 ? "done"
                 : "none"
-              : stepState(jobs);
+              : step.label === "Ficha estratégica"
+                ? client.strategicSubmittedAt
+                  ? "done"
+                  : client.strategicDraftSavedAt
+                    ? "running"
+                    : "none"
+                : stepState(jobs);
           const detail =
             step.label === "Respuesta guardada"
               ? when(client.adminSubmittedAt)
-              : stepDetail(step.label, client, jobs);
+              : step.label === "Ficha estratégica"
+                ? client.strategicSubmittedAt
+                  ? `enviada ${when(client.strategicSubmittedAt)}`
+                  : client.strategicDraftSavedAt
+                    ? `a medias · guardada ${when(client.strategicDraftSavedAt)}`
+                    : null
+                : stepDetail(step.label, client, jobs);
           const stopped = jobs.filter(
             (j) => j.status === "failed" || j.status === "uncertain",
           );
@@ -202,7 +257,8 @@ function ClientCard({ client }: { client: OnboardingClient }) {
                   {STATE_STYLE[state].text}
                   {state === "done" &&
                   lastDone &&
-                  step.label !== "Respuesta guardada"
+                  step.label !== "Respuesta guardada" &&
+                  step.label !== "Ficha estratégica"
                     ? ` · ${when(lastDone)}`
                     : ""}
                   {detail ? ` · ${detail}` : ""}

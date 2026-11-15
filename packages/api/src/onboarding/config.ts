@@ -21,6 +21,10 @@ export const CLIENTS_TAB = "Clientes";
 // The administrative form link inside the welcome template. It is replaced by
 // the client's own link to the panel's form.
 export const MS_FORMS_ADMIN_URL = "https://forms.cloud.microsoft/r/gL4nHDEhyc";
+// The strategic form link inside the second email (D6), under either of
+// Microsoft's domains. Replaced by the client's link to the panel's form.
+export const MS_FORMS_STRATEGIC_URL =
+  /https:\/\/forms\.(?:office\.com|cloud\.microsoft)\/r\/UEubFsb6J1/;
 
 export const SENDER =
   "Administración Impeesa Marketing <administracion@impeesamarketing.com>";

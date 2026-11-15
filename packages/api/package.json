@@ -16,6 +16,10 @@
       "types": "./src/onboarding/adminForm.ts",
       "default": "./src/onboarding/adminForm.ts"
     },
+    "./onboarding/strategicForm": {
+      "types": "./src/onboarding/strategicForm.ts",
+      "default": "./src/onboarding/strategicForm.ts"
+    },
     "./onboarding": {
       "types": "./src/onboarding/index.ts",
       "default": "./src/onboarding/index.ts"
@@ -85,6 +89,7 @@
     "typecheck": "tsc --noEmit --emitDeclarationOnly false"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
     "@kan/auth": "workspace:*",
     "@kan/db": "workspace:*",
     "@kan/email": "workspace:^",

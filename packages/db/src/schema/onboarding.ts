@@ -178,3 +178,30 @@ export const onboardingEmailEvents = pgTable(
   },
   (table) => [index("onboarding_email_event_resend_idx").on(table.resendId)],
 ).enableRLS();
+
+// A form the client is still filling in. Saved in the panel (not in the
+// browser) so the client can stop and pick it up later, from any device,
+// with the same link. Removed when the form is finally sent.
+export const onboardingDrafts = pgTable(
+  "onboarding_draft",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    onboardingClientId: bigint("onboardingClientId", { mode: "number" })
+      .notNull()
+      .references(() => onboardingClients.id, { onDelete: "cascade" }),
+    // "estrategica".
+    form: varchar("form", { length: 32 }).notNull(),
+    formVersion: integer("formVersion").notNull(),
+    answers: jsonb("answers").notNull(),
+    // The question the client was on, to bring them back to it.
+    step: integer("step").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("onboarding_draft_client_form_unique").on(
+      table.onboardingClientId,
+      table.form,
+    ),
+  ],
+).enableRLS();

@@ -8,6 +8,7 @@ import * as listRepo from "@kan/db/repository/list.repo";
 import {
   cards,
   onboardingClients,
+  onboardingDrafts,
   onboardingEmails,
   onboardingJobs,
   onboardingSubmissions,
@@ -15,7 +16,7 @@ import {
 import { generateUID } from "@kan/shared/utils";
 
 import type { AdminAnswers } from "../onboarding/adminForm";
-import { enqueueJob, retryJob } from "../onboarding";
+import { enqueueJob, formLink, retryJob, strategicLink } from "../onboarding";
 import {
   ADMIN_FORM_VERSION,
   adminAnswersSchema,
@@ -24,6 +25,11 @@ import {
   isLiveMode,
   ONBOARDING_NEW_CLIENT_LIST_PUBLIC_ID,
 } from "../onboarding/config";
+import {
+  STRATEGIC_FORM_VERSION,
+  strategicAnswersSchema,
+  strategicDraftSchema,
+} from "../onboarding/strategicForm";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { assertPermission } from "../utils/permissions";
 
@@ -96,7 +102,7 @@ export const onboardingRouter = createTRPCRouter({
     const ids = clients.map((c) => c.id);
     if (!ids.length) return { liveMode: isLiveMode(), clients: [] };
 
-    const [jobs, emails, submissions, clientCards] = await Promise.all([
+    const [jobs, emails, submissions, clientCards, drafts] = await Promise.all([
       ctx.db.query.onboardingJobs.findMany({
         where: inArray(onboardingJobs.onboardingClientId, ids),
         orderBy: onboardingJobs.id,
@@ -117,6 +123,10 @@ export const onboardingRouter = createTRPCRouter({
           isNull(cards.deletedAt),
         ),
       }),
+      ctx.db.query.onboardingDrafts.findMany({
+        columns: { onboardingClientId: true, updatedAt: true },
+        where: inArray(onboardingDrafts.onboardingClientId, ids),
+      }),
     ]);
 
     return {
@@ -126,6 +136,9 @@ export const onboardingRouter = createTRPCRouter({
           (s) => s.onboardingClientId === c.id && s.form === "administrativa",
         );
         const answers = admin?.answers as AdminAnswers | undefined;
+        const strategic = submissions.find(
+          (s) => s.onboardingClientId === c.id && s.form === "estrategica",
+        );
         return {
           publicId: c.publicId,
           firstName: c.firstName,
@@ -139,6 +152,12 @@ export const onboardingRouter = createTRPCRouter({
             clientCards.find((card) => card.id === c.cardId)?.publicId ?? null,
           createdAt: c.createdAt,
           adminSubmittedAt: admin?.submittedAt ?? null,
+          strategicSubmittedAt: strategic?.submittedAt ?? null,
+          strategicDraftSavedAt:
+            drafts.find((d) => d.onboardingClientId === c.id)?.updatedAt ??
+            null,
+          adminLink: formLink(c.token),
+          strategicLink: strategicLink(c.token),
           jobs: jobs
             .filter((j) => j.onboardingClientId === c.id)
             .map((j) => ({
@@ -296,6 +315,145 @@ export const onboardingRouter = createTRPCRouter({
 
       for (const kind of ["field:ficha_done", "sheet_row", "drive_folder"])
         await enqueueJob(ctx.db, { onboardingClientId: client.id, kind });
+      return { alreadySubmitted: false };
+    }),
+
+  // --- Public: the strategic form (/f/<token>/estrategica) -----------------
+  // Long, so what the client types is saved as a draft in the panel and
+  // they can come back later, from any device, with the same link.
+
+  publicStrategic: publicProcedure
+    .input(z.object({ token: tokenInput }))
+    .query(async ({ ctx, input }) => {
+      const client = await clientByToken(ctx.db, input.token);
+      const [admin, strategic, draft] = await Promise.all([
+        ctx.db.query.onboardingSubmissions.findFirst({
+          columns: { answers: true },
+          where: and(
+            eq(onboardingSubmissions.onboardingClientId, client.id),
+            eq(onboardingSubmissions.form, "administrativa"),
+          ),
+        }),
+        ctx.db.query.onboardingSubmissions.findFirst({
+          columns: { id: true },
+          where: and(
+            eq(onboardingSubmissions.onboardingClientId, client.id),
+            eq(onboardingSubmissions.form, "estrategica"),
+          ),
+        }),
+        ctx.db.query.onboardingDrafts.findFirst({
+          where: and(
+            eq(onboardingDrafts.onboardingClientId, client.id),
+            eq(onboardingDrafts.form, "estrategica"),
+          ),
+        }),
+      ]);
+      const adminAnswers = admin?.answers as AdminAnswers | undefined;
+      const parsedDraft = draft
+        ? strategicDraftSchema.safeParse(draft.answers)
+        : null;
+      return {
+        firstName: client.firstName,
+        business: adminAnswers?.nombreFantasia ?? null,
+        // The brief goes in the client's folder, made after the first form.
+        adminDone: !!admin,
+        submitted: !!strategic,
+        draft:
+          draft && parsedDraft?.success
+            ? {
+                answers: parsedDraft.data,
+                step: draft.step,
+                savedAt: draft.updatedAt,
+              }
+            : null,
+      };
+    }),
+
+  saveStrategicDraft: publicProcedure
+    .input(
+      z.object({
+        token: tokenInput,
+        answers: strategicDraftSchema,
+        step: z.number().int().min(0).max(200),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const client = await clientByToken(ctx.db, input.token);
+      const sent = await ctx.db.query.onboardingSubmissions.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(onboardingSubmissions.onboardingClientId, client.id),
+          eq(onboardingSubmissions.form, "estrategica"),
+        ),
+      });
+      if (sent) return { savedAt: null, alreadySubmitted: true };
+
+      const now = new Date();
+      await ctx.db
+        .insert(onboardingDrafts)
+        .values({
+          onboardingClientId: client.id,
+          form: "estrategica",
+          formVersion: STRATEGIC_FORM_VERSION,
+          answers: input.answers,
+          step: input.step,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [onboardingDrafts.onboardingClientId, onboardingDrafts.form],
+          set: {
+            answers: input.answers,
+            step: input.step,
+            formVersion: STRATEGIC_FORM_VERSION,
+            updatedAt: now,
+          },
+        });
+      return { savedAt: now, alreadySubmitted: false };
+    }),
+
+  submitEstrategica: publicProcedure
+    .input(z.object({ token: tokenInput, answers: strategicAnswersSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const client = await clientByToken(ctx.db, input.token);
+      const admin = await ctx.db.query.onboardingSubmissions.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(onboardingSubmissions.onboardingClientId, client.id),
+          eq(onboardingSubmissions.form, "administrativa"),
+        ),
+      });
+      if (!admin)
+        throw new TRPCError({
+          message: "Primero tiene que estar enviada la ficha inicial",
+          code: "PRECONDITION_FAILED",
+        });
+
+      const [saved] = await ctx.db
+        .insert(onboardingSubmissions)
+        .values({
+          publicId: generateUID(),
+          onboardingClientId: client.id,
+          form: "estrategica",
+          formVersion: STRATEGIC_FORM_VERSION,
+          answers: input.answers,
+        })
+        .onConflictDoNothing()
+        .returning({ id: onboardingSubmissions.id });
+      // Already sent: the brief is never made twice.
+      if (!saved) return { alreadySubmitted: true };
+
+      await ctx.db
+        .delete(onboardingDrafts)
+        .where(
+          and(
+            eq(onboardingDrafts.onboardingClientId, client.id),
+            eq(onboardingDrafts.form, "estrategica"),
+          ),
+        );
+      await enqueueJob(ctx.db, {
+        onboardingClientId: client.id,
+        kind: "brief_summary",
+      });
       return { alreadySubmitted: false };
     }),
 });

@@ -3,4 +3,4 @@
 import "./handlers";
 
 export { enqueueJob, kickWorker, retryJob } from "./queue";
-export { formLink } from "./handlers";
+export { formLink, strategicLink } from "./handlers";

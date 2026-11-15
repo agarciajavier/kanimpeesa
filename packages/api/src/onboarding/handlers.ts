@@ -14,15 +14,30 @@ import {
 } from "@kan/db/schema";
 
 import type { AdminAnswers } from "./adminForm";
+import type { BriefSection } from "./ai";
 import type { JobRow } from "./queue";
+import type { StrategicAnswers } from "./strategicForm";
 import type { AccessStatus } from "./templates";
 import { applyCardFieldValue } from "../utils/fieldAutomation";
-import { baseUrl, getTargets, MS_FORMS_ADMIN_URL } from "./config";
+import { summarizeBrief } from "./ai";
+import { writeBriefDoc } from "./brief";
+import {
+  baseUrl,
+  getTargets,
+  MS_FORMS_ADMIN_URL,
+  MS_FORMS_STRATEGIC_URL,
+} from "./config";
 import { folderUrl, prepareClientFolder, shareFolder } from "./drive";
 import { sendTracked } from "./emails";
 import { PermanentError, RetryableError } from "./errors";
 import { enqueueJob, registerHandler } from "./queue";
 import { panelReference, writeClientRow } from "./sheet";
+import {
+  answerText,
+  STRATEGIC_SECTIONS,
+  STRATEGIC_TEXT,
+  strategicQuestions,
+} from "./strategicForm";
 import {
   escapeHtml,
   fill,
@@ -39,6 +54,7 @@ import {
 //                 ─► drive_folder ─► card_details
 //                                 ─► drive_share ─► onboarding_email
 //                                                ─► field:folder_shared|sent
+//   Ficha estratégica enviada ─► brief_summary ─► brief_doc ─► field:brief_done
 
 async function loadClient(db: dbClient, id: number) {
   const client = await db.query.onboardingClients.findFirst({
@@ -131,6 +147,7 @@ const FIELD_JOBS: Record<string, [string, string]> = {
   "field:ficha_done": ["Ficha administrativa", "Completada"],
   "field:folder_shared": ["Carpeta compartida", "Compartida"],
   "field:folder_sent": ["Carpeta compartida", "Enviada"],
+  "field:brief_done": ["Brief de marca", "Listo"],
 };
 
 for (const [kind, [fieldName, optionName]] of Object.entries(FIELD_JOBS))
@@ -142,6 +159,8 @@ for (const [kind, [fieldName, optionName]] of Object.entries(FIELD_JOBS))
 // --- Welcome email (template D5) ------------------------------------------
 
 export const formLink = (token: string) => `${baseUrl()}/f/${token}`;
+export const strategicLink = (token: string) =>
+  `${baseUrl()}/f/${token}/estrategica`;
 
 registerHandler("welcome_email", async (db, job) => {
   const client = await loadClient(db, job.onboardingClientId);
@@ -297,7 +316,21 @@ registerHandler("onboarding_email", async (db, job) => {
   if (!share || !client.driveFolderId)
     throw new RetryableError("Falta el resultado de compartir la carpeta");
 
-  const template = await readOnboardingTemplate();
+  const loaded = await readOnboardingTemplate();
+  // The strategic form link (Microsoft Forms) is replaced by the client's
+  // own link to the panel's form. It must be there, or the template changed
+  // and nothing is sent.
+  if (!MS_FORMS_STRATEGIC_URL.test(loaded.html))
+    throw new PermanentError(
+      "La plantilla D6 ya no tiene el enlace de la ficha estratégica de Microsoft Forms; no sé dónde poner el nuevo",
+    );
+  const template = {
+    ...loaded,
+    html: loaded.html.replace(
+      new RegExp(MS_FORMS_STRATEGIC_URL.source, "g"),
+      escapeHtml(strategicLink(client.token)),
+    ),
+  };
   const variant = template.accessVariants[share.access];
   if (!variant)
     throw new PermanentError(
@@ -459,6 +492,89 @@ registerHandler("card_details", async (db, job) => {
       createdBy: actor,
     });
   return { result: { title } };
+});
+
+// --- Strategic form: the brief --------------------------------------------
+
+async function loadStrategic(db: dbClient, clientId: number) {
+  const submission = await db.query.onboardingSubmissions.findFirst({
+    where: and(
+      eq(onboardingSubmissions.onboardingClientId, clientId),
+      eq(onboardingSubmissions.form, "estrategica"),
+    ),
+  });
+  if (!submission)
+    throw new PermanentError("No está guardada la ficha estratégica");
+  return {
+    answers: submission.answers as StrategicAnswers,
+    submittedAt: submission.submittedAt,
+  };
+}
+
+// The answers grouped as in the form, exactly as the client wrote them.
+function briefSections(answers: StrategicAnswers): BriefSection[] {
+  const sections: BriefSection[] = [];
+  for (const q of strategicQuestions(answers)) {
+    const title = STRATEGIC_SECTIONS[q.section].title;
+    let section = sections.find((s) => s.title === title);
+    if (!section) {
+      section = { title, questions: [] };
+      sections.push(section);
+    }
+    section.questions.push({
+      label: STRATEGIC_TEXT[q.field].label,
+      answer: answerText(answers[q.field]),
+    });
+  }
+  return sections;
+}
+
+// The summary and conclusion, written once and kept in the job's result so
+// a retry of the document doesn't write different ones.
+registerHandler("brief_summary", async (db, job) => {
+  const client = await loadClient(db, job.onboardingClientId);
+  const admin = await loadAdminAnswers(db, client.id);
+  const { answers } = await loadStrategic(db, client.id);
+  const summary = await summarizeBrief(
+    admin.nombreFantasia,
+    briefSections(answers),
+  );
+  await enqueueJob(db, { onboardingClientId: client.id, kind: "brief_doc" });
+  return { result: summary };
+});
+
+registerHandler("brief_doc", async (db, job) => {
+  const client = await loadClient(db, job.onboardingClientId);
+  const admin = await loadAdminAnswers(db, client.id);
+  const { answers, submittedAt } = await loadStrategic(db, client.id);
+  const summary = await jobResult<{ resumen: string; conclusion: string }>(
+    db,
+    client.id,
+    "brief_summary",
+  );
+  if (!summary) throw new RetryableError("Falta el resumen del brief");
+  if (!client.driveFolderId)
+    throw new RetryableError("La carpeta del cliente todavía no está creada");
+
+  const doc = await writeBriefDoc(client.driveFolderId, {
+    business: admin.nombreFantasia,
+    submittedAt,
+    sections: briefSections(answers),
+    resumen: summary.resumen,
+    conclusion: summary.conclusion,
+  });
+
+  // The panel client shows it as its brief.
+  if (client.clientId)
+    await db
+      .update(clients)
+      .set({ briefUrl: doc.url, updatedAt: new Date() })
+      .where(and(eq(clients.id, client.clientId), isNull(clients.briefUrl)));
+  await enqueueJob(db, {
+    onboardingClientId: client.id,
+    kind: "field:brief_done",
+  });
+  return { result: doc };
 });
 
 export type { JobRow };
