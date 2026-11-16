@@ -20,6 +20,10 @@
       "types": "./src/onboarding/strategicForm.ts",
       "default": "./src/onboarding/strategicForm.ts"
     },
+    "./onboarding/dropboxSign": {
+      "types": "./src/onboarding/dropboxSign.ts",
+      "default": "./src/onboarding/dropboxSign.ts"
+    },
     "./onboarding/webhook": {
       "types": "./src/onboarding/webhook.ts",
       "default": "./src/onboarding/webhook.ts"

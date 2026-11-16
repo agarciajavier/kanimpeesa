@@ -1,20 +1,25 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Readable } from "node:stream";
 
-// Impeesa: Dropbox Sign's account callback (signed terms and conditions).
-//
-// FIRST STEP, TEST ONLY: it just writes to the log which notices arrive, to
-// find out whether requests sent from the Google Docs add-on reach the
-// account callback. It doesn't touch any client.
+import type { SignEvent } from "@kan/api/onboarding/dropboxSign";
+import {
+  recordSignEvent,
+  verifyDropboxSignEvent,
+} from "@kan/api/onboarding/dropboxSign";
+import { createDrizzleClient } from "@kan/db/client";
+
+// Impeesa: Dropbox Sign's account callback (terms and conditions). Ángel
+// sends the terms himself; these notices move "Términos y condiciones" on
+// the client's card. Nothing is sent from here.
 //
 // Dropbox Sign sends a form with a "json" field and expects exactly "Hello
-// API Event Received" back. Each notice carries event_hash =
-// HMAC-SHA256(API key, event_time + event_type), checked with
-// DROPBOX_SIGN_API_KEY.
+// API Event Received" back; anything else (or an error) and it tries again
+// later. Each notice is checked with DROPBOX_SIGN_API_KEY.
 export const config = { api: { bodyParser: false } };
 
 const ACK = "Hello API Event Received";
+
+const db = createDrizzleClient();
 
 async function readBody(readable: Readable) {
   const chunks: Buffer[] = [];
@@ -28,38 +33,18 @@ async function readBody(readable: Readable) {
   return Buffer.concat(chunks);
 }
 
-interface SignEvent {
-  event?: {
-    event_type?: string;
-    event_time?: string;
-    event_hash?: string;
-  };
-  signature_request?: {
-    signature_request_id?: string;
-    title?: string;
-    is_complete?: boolean;
-    signatures?: { status_code?: string }[];
-  };
-}
-
-function verifyDropboxSignEvent(event: SignEvent, apiKey: string) {
-  const { event_type, event_time, event_hash } = event.event ?? {};
-  if (!event_type || !event_time || !event_hash) return false;
-  const expected = createHmac("sha256", apiKey)
-    .update(`${event_time}${event_type}`)
-    .digest("hex");
-  return (
-    event_hash.length === expected.length &&
-    timingSafeEqual(Buffer.from(event_hash), Buffer.from(expected))
-  );
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
   if (req.method !== "POST")
     return res.status(405).json({ message: "Method not allowed" });
+
+  const apiKey = process.env.DROPBOX_SIGN_API_KEY;
+  if (!apiKey) {
+    console.error("[dropbox-sign] falta DROPBOX_SIGN_API_KEY");
+    return res.status(503).send("Not configured");
+  }
 
   let event: SignEvent;
   try {
@@ -79,24 +64,26 @@ export default async function handler(
     return res.status(400).send("Invalid body");
   }
 
-  const apiKey = process.env.DROPBOX_SIGN_API_KEY;
-  const verified = apiKey ? verifyDropboxSignEvent(event, apiKey) : null;
-  if (verified === false) return res.status(401).send("Invalid event hash");
+  if (!verifyDropboxSignEvent(event, apiKey))
+    return res.status(401).send("Invalid event hash");
 
-  // Only what's needed to see what arrives: no names or emails.
-  const request = event.signature_request;
-  console.log(
-    "[dropbox-sign] aviso",
-    JSON.stringify({
-      type: event.event?.event_type,
-      time: event.event?.event_time,
-      verified,
-      requestId: request?.signature_request_id,
-      title: request?.title,
-      complete: request?.is_complete,
-      signatures: request?.signatures?.map((s) => s.status_code),
-    }),
-  );
+  try {
+    const { outcome, option } = await recordSignEvent(db, event);
+    // No names or emails in the log.
+    console.log(
+      "[dropbox-sign] aviso",
+      JSON.stringify({
+        type: event.event?.event_type,
+        requestId: event.signature_request?.signature_request_id,
+        outcome,
+        option,
+      }),
+    );
+  } catch (error) {
+    console.error("[dropbox-sign] no se pudo procesar el aviso", error);
+    // Not the ACK: Dropbox Sign tries again later.
+    return res.status(500).send("Error");
+  }
 
   res.setHeader("Content-Type", "text/plain");
   return res.status(200).send(ACK);

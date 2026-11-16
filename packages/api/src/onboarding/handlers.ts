@@ -192,6 +192,32 @@ for (const [emailKind, fieldName] of Object.entries(EMAIL_FIELDS))
       };
     });
 
+// --- Terms and conditions, on the card ------------------------------------
+
+// Ángel sends the terms himself (Dropbox Sign, from Google Docs). Dropbox
+// Sign's notices (see dropboxSign.ts) only move "Términos y condiciones"
+// forward: Enviados para firmar → Pendiente firma del cliente → Firmados
+// por todos.
+export const TYC_FIELD = "Términos y condiciones";
+export const TYC_STEPS: Record<string, string[]> = {
+  "Enviados para firmar": ["Pendiente"],
+  "Pendiente firma del cliente": ["Pendiente", "Enviados para firmar"],
+  "Firmados por todos": [
+    "Pendiente",
+    "Enviados para firmar",
+    "Pendiente firma del cliente",
+  ],
+};
+export const tycFieldJob = (option: string) => `tyc_field:${option}`;
+
+for (const [optionName, onlyFrom] of Object.entries(TYC_STEPS))
+  registerHandler(tycFieldJob(optionName), async (db, job) => {
+    const client = await loadClient(db, job.onboardingClientId);
+    return {
+      result: await setCardField(db, client, TYC_FIELD, optionName, onlyFrom),
+    };
+  });
+
 // --- Welcome email (template D5) ------------------------------------------
 
 export const formLink = (token: string) => `${baseUrl()}/f/${token}`;
