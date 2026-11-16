@@ -193,6 +193,9 @@ export const onboardingRouter = createTRPCRouter({
       z.object({
         firstName: z.string().trim().min(1).max(100),
         email: z.string().trim().toLowerCase().email().max(320),
+        // Only in live mode: a test client (emails to the test inbox, test
+        // Sheet and folder), to try something without a real client.
+        isTest: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -200,12 +203,9 @@ export const onboardingRouter = createTRPCRouter({
       const list = await onboardingList(ctx.db);
       await assertPermission(ctx.db, userId, list.workspaceId, "card:create");
 
-      // Real sends stay off until Ángel authorizes them.
-      if (isLiveMode())
-        throw new TRPCError({
-          message: "Los envíos reales todavía no están habilitados",
-          code: "FORBIDDEN",
-        });
+      // Real clients only once Ángel turns live mode on (ONBOARDING_MODE=
+      // live in Railway). Until then every client is a test client.
+      const isTest = isLiveMode() ? (input.isTest ?? false) : true;
 
       const card = await cardRepo.create(ctx.db, {
         title: input.firstName,
@@ -229,7 +229,7 @@ export const onboardingRouter = createTRPCRouter({
           workspaceId: list.workspaceId,
           firstName: input.firstName,
           email: input.email,
-          isTest: true,
+          isTest,
           cardId: card.id,
           createdBy: userId,
         })

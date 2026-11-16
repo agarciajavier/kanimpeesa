@@ -339,9 +339,16 @@ function ClientCard({ client }: { client: OnboardingClient }) {
   );
 }
 
-function NewClientForm({ onDone }: { onDone: () => void }) {
+function NewClientForm({
+  onDone,
+  liveMode,
+}: {
+  onDone: () => void;
+  liveMode: boolean;
+}) {
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
+  const [isTest, setIsTest] = useState(false);
   const utils = api.useUtils();
   const { showPopup } = usePopup();
   const create = api.onboarding.create.useMutation({
@@ -365,7 +372,7 @@ function NewClientForm({ onDone }: { onDone: () => void }) {
       className="mb-8 rounded-md border border-light-300 p-4 dark:border-dark-300"
       onSubmit={(e) => {
         e.preventDefault();
-        create.mutate({ firstName, email });
+        create.mutate({ firstName, email, isTest: liveMode && isTest });
       }}
     >
       <p className="mb-3 text-sm font-medium text-neutral-900 dark:text-dark-1000">
@@ -394,10 +401,23 @@ function NewClientForm({ onDone }: { onDone: () => void }) {
           />
         </label>
       </div>
+      {liveMode && (
+        <label className="mt-3 flex items-center gap-2 text-xs text-light-900 dark:text-dark-900">
+          <input
+            type="checkbox"
+            checked={isTest}
+            onChange={(e) => setIsTest(e.target.checked)}
+          />
+          Es una prueba: los mails te llegan a vos y se usan el Sheet y la
+          carpeta de prueba
+        </label>
+      )}
       <p className="mt-3 text-xs text-light-900 dark:text-dark-900">
         Se crea la tarjeta en Onboarding → Nuevo cliente y se manda el mail de
-        bienvenida con el enlace a la ficha. En modo prueba el mail te llega a
-        vos, no al cliente.
+        bienvenida con el enlace a la ficha.{" "}
+        {liveMode && !isTest
+          ? "El mail le llega al cliente."
+          : "Es una prueba: el mail te llega a vos, no al cliente."}
       </p>
       <div className="mt-3 flex gap-2">
         <Button type="submit" size="sm" isLoading={create.isPending}>
@@ -434,6 +454,12 @@ export default function FormsView() {
               <h1 className="font-bold tracking-tight text-neutral-900 dark:text-dark-1000 sm:text-[1.2rem]">
                 Forms
               </h1>
+              {data?.liveMode && (
+                <p className="mt-1 text-xs font-medium text-green-700 dark:text-green-400">
+                  Modo real: los mails les llegan a los clientes y se usan el
+                  Sheet y la carpeta reales.
+                </p>
+              )}
               {data && !data.liveMode && (
                 <p className="mt-1 text-xs text-light-900 dark:text-dark-900">
                   Modo prueba: los mails van solo a tu casilla, con [PRUEBA] en
@@ -451,7 +477,12 @@ export default function FormsView() {
             )}
           </div>
 
-          {adding && <NewClientForm onDone={() => setAdding(false)} />}
+          {adding && (
+            <NewClientForm
+              liveMode={!!data?.liveMode}
+              onDone={() => setAdding(false)}
+            />
+          )}
 
           {isLoading && <p className="text-sm text-light-900">Cargando…</p>}
           {error && <p className="text-sm text-red-600">{error.message}</p>}
