@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import * as boardFieldRepo from "@kan/db/repository/boardField.repo";
@@ -609,11 +609,12 @@ registerHandler("brief_doc", async (db, job) => {
   const client = await loadClient(db, job.onboardingClientId);
   const admin = await loadAdminAnswers(db, client.id);
   const { answers, submittedAt } = await loadStrategic(db, client.id);
-  const summary = await jobResult<{ resumen: string; conclusion: string }>(
-    db,
-    client.id,
-    "brief_summary",
-  );
+  const summary = await jobResult<{
+    resumen: string;
+    conclusion: string;
+    // Briefs summarized before this existed don't have it.
+    ficha?: string;
+  }>(db, client.id, "brief_summary");
   if (!summary) throw new RetryableError("Falta el resumen del brief");
   if (!client.driveFolderId)
     throw new RetryableError("La carpeta del cliente todavía no está creada");
@@ -626,12 +627,25 @@ registerHandler("brief_doc", async (db, job) => {
     conclusion: summary.conclusion,
   });
 
-  // The panel client shows it as its brief.
-  if (client.clientId)
+  // The panel client shows it as its brief, and the short summary as its
+  // summary. Neither replaces what someone already wrote by hand.
+  if (client.clientId) {
     await db
       .update(clients)
       .set({ briefUrl: doc.url, updatedAt: new Date() })
       .where(and(eq(clients.id, client.clientId), isNull(clients.briefUrl)));
+    const ficha = summary.ficha?.trim().slice(0, 2000);
+    if (ficha)
+      await db
+        .update(clients)
+        .set({ summary: ficha, updatedAt: new Date() })
+        .where(
+          and(
+            eq(clients.id, client.clientId),
+            or(isNull(clients.summary), eq(clients.summary, "")),
+          ),
+        );
+  }
   await enqueueJob(db, {
     onboardingClientId: client.id,
     kind: "field:brief_done",
