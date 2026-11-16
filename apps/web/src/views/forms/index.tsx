@@ -52,11 +52,14 @@ const ACCESS_TEXT: Record<string, string> = {
 
 const EMAIL_STATUS: Record<string, string> = {
   sending: "Enviando",
-  accepted: "Envío aceptado",
+  accepted: "Enviado, sin confirmar entrega",
+  delayed: "Entrega demorada",
   delivered: "Entregado",
-  opened: "Apertura detectada",
-  bounced: "Rebotado",
-  failed: "Error",
+  opened: "Abierto",
+  clicked: "Abierto, con clic en un enlace",
+  bounced: "Rebotó",
+  complained: "Marcado como spam",
+  failed: "No se pudo entregar",
 };
 
 type StepState =
@@ -99,7 +102,16 @@ function stepDetail(label: string, client: OnboardingClient, jobs: Job[]) {
         (label === "Mail de bienvenida" ? "bienvenida" : "onboarding"),
     );
     if (!email) return null;
-    return `${EMAIL_STATUS[email.status] ?? email.status} · ${email.toEmail}`;
+    // The time of what matters most: when it was opened, or bounced, or
+    // delivered.
+    const at = email.bouncedAt ?? email.openedAt ?? email.deliveredAt ?? null;
+    return [
+      EMAIL_STATUS[email.status] ?? email.status,
+      at ? when(at) : null,
+      email.toEmail,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
   if (label === "Cliente registrado (Sheet)") {
     const r = done("sheet_row")?.result as
@@ -121,6 +133,18 @@ function stepDetail(label: string, client: OnboardingClient, jobs: Job[]) {
   }
   return null;
 }
+
+// An email Resend says didn't reach the client shows as an error.
+const emailNotReceived = (label: string, client: OnboardingClient) => {
+  const kind =
+    label === "Mail de bienvenida"
+      ? "bienvenida"
+      : label === "Segundo correo"
+        ? "onboarding"
+        : null;
+  const email = kind ? client.emails.find((e) => e.kind === kind) : null;
+  return ["bounced", "complained", "failed"].includes(email?.status ?? "");
+};
 
 const briefUrl = (client: OnboardingClient) => {
   const job = client.jobs.find(
@@ -223,7 +247,9 @@ function ClientCard({ client }: { client: OnboardingClient }) {
                   : client.strategicDraftSavedAt
                     ? "running"
                     : "none"
-                : stepState(jobs);
+                : emailNotReceived(step.label, client)
+                  ? "failed"
+                  : stepState(jobs);
           const detail =
             step.label === "Respuesta guardada"
               ? when(client.adminSubmittedAt)

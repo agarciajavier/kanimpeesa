@@ -20,6 +20,10 @@
       "types": "./src/onboarding/strategicForm.ts",
       "default": "./src/onboarding/strategicForm.ts"
     },
+    "./onboarding/webhook": {
+      "types": "./src/onboarding/webhook.ts",
+      "default": "./src/onboarding/webhook.ts"
+    },
     "./onboarding": {
       "types": "./src/onboarding/index.ts",
       "default": "./src/onboarding/index.ts"
