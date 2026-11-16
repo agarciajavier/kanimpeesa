@@ -19,10 +19,20 @@ type OnboardingClient = RouterOutputs["onboarding"]["list"]["clients"][number];
 type Job = OnboardingClient["jobs"][number];
 
 // The steps shown, in order. A step may be several jobs.
+// The card's field following Resend's notices (onboarding/handlers.ts).
+const emailFieldKinds = (emailKind: string) =>
+  ["Entregado", "Abierto", "Rebotó"].map(
+    (option) => `email_field:${emailKind}:${option}`,
+  );
+
 const STEPS: { label: string; kinds: string[] }[] = [
   {
     label: "Mail de bienvenida",
-    kinds: ["welcome_email", "field:welcome_sent"],
+    kinds: [
+      "welcome_email",
+      "field:welcome_sent",
+      ...emailFieldKinds("bienvenida"),
+    ],
   },
   { label: "Respuesta guardada", kinds: [] },
   {
@@ -35,7 +45,10 @@ const STEPS: { label: string; kinds: string[] }[] = [
     label: "Compartido",
     kinds: ["drive_share", "field:folder_shared", "field:folder_sent"],
   },
-  { label: "Segundo correo", kinds: ["onboarding_email"] },
+  {
+    label: "Segundo correo",
+    kinds: ["onboarding_email", ...emailFieldKinds("onboarding")],
+  },
   { label: "Ficha estratégica", kinds: [] },
   {
     label: "Brief de marca",

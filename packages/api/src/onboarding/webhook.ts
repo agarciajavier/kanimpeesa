@@ -6,6 +6,8 @@ import { onboardingEmailEvents, onboardingEmails } from "@kan/db/schema";
 
 import { alertEmail } from "./config";
 import { describeError } from "./errors";
+import { EMAIL_FIELDS, emailFieldJob } from "./handlers";
+import { enqueueJob } from "./queue";
 import { resendSend } from "./resend";
 import { escapeHtml } from "./templates";
 
@@ -73,6 +75,15 @@ const STATUS_BY_TYPE: Record<string, string> = {
   "email.failed": "failed",
 };
 
+const CARD_OPTION: Record<string, string> = {
+  delivered: "Entregado",
+  opened: "Abierto",
+  clicked: "Abierto",
+  bounced: "Rebotó",
+  complained: "Rebotó",
+  failed: "Rebotó",
+};
+
 interface ResendEvent {
   type?: string;
   created_at?: string;
@@ -117,6 +128,15 @@ export async function recordResendEvent(
         email.lastEventAt && email.lastEventAt > at ? email.lastEventAt : at,
     })
     .where(eq(onboardingEmails.id, email.id));
+
+  // The card shows it too, through the board's own field (and its
+  // automations). Done in the queue, so a failure is retried.
+  const option = CARD_OPTION[status];
+  if (forward && option && EMAIL_FIELDS[email.kind])
+    await enqueueJob(db, {
+      onboardingClientId: email.onboardingClientId,
+      kind: emailFieldJob(email.kind, option),
+    });
 
   // The client didn't get it: Ángel finds out right away, once.
   if (

@@ -113,6 +113,9 @@ async function setCardField(
   client: Client,
   fieldName: string,
   optionName: string,
+  // Only change it if it's empty or on one of these options (so a later
+  // notice never undoes a step ahead, or something set by hand).
+  onlyFrom?: string[],
 ) {
   const card = await cardOf(db, client);
   const fields = await boardFieldRepo.getAllByBoardId(db, card.context.boardId);
@@ -125,6 +128,14 @@ async function setCardField(
     throw new PermanentError(
       `En el tablero no existe el campo "${fieldName}" con la opción "${optionName}"`,
     );
+
+  if (onlyFrom) {
+    const values = await boardFieldRepo.getValuesForCard(db, card.context.id);
+    const currentId = values.find((v) => v.fieldId === field.id)?.optionId;
+    const current = field.options.find((o) => o.id === currentId)?.name;
+    if (current === optionName || (current && !onlyFrom.includes(current)))
+      return { field: fieldName, option: optionName, skipped: current };
+  }
 
   const actor = client.createdBy ?? card.context.createdBy;
   if (!actor)
@@ -155,6 +166,31 @@ for (const [kind, [fieldName, optionName]] of Object.entries(FIELD_JOBS))
     const client = await loadClient(db, job.onboardingClientId);
     return { result: await setCardField(db, client, fieldName, optionName) };
   });
+
+// --- What happened to each email, on the card -----------------------------
+
+// Resend's notices (see webhook.ts) move "Mail de bienvenida" and "Correo
+// brief" forward: Enviado → Entregado → Abierto, or Rebotó.
+export const EMAIL_FIELDS: Record<string, string> = {
+  bienvenida: "Mail de bienvenida",
+  onboarding: "Correo brief",
+};
+export const EMAIL_FIELD_STEPS: Record<string, string[]> = {
+  Entregado: ["Pendiente", "Enviado"],
+  Abierto: ["Pendiente", "Enviado", "Entregado"],
+  Rebotó: ["Pendiente", "Enviado", "Entregado"],
+};
+export const emailFieldJob = (emailKind: string, option: string) =>
+  `email_field:${emailKind}:${option}`;
+
+for (const [emailKind, fieldName] of Object.entries(EMAIL_FIELDS))
+  for (const [optionName, onlyFrom] of Object.entries(EMAIL_FIELD_STEPS))
+    registerHandler(emailFieldJob(emailKind, optionName), async (db, job) => {
+      const client = await loadClient(db, job.onboardingClientId);
+      return {
+        result: await setCardField(db, client, fieldName, optionName, onlyFrom),
+      };
+    });
 
 // --- Welcome email (template D5) ------------------------------------------
 
