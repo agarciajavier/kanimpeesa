@@ -54,15 +54,14 @@ export async function summarizeBrief(
   if (!apiKey) throw new PermanentError("Falta ANTHROPIC_API_KEY en Railway");
 
   const client = new Anthropic({ apiKey, timeout: 5 * 60_000 });
-  let response: Anthropic.Beta.BetaMessage;
+  let response: Anthropic.Message;
   try {
-    response = await client.beta.messages.create({
-      model: "claude-opus-5-5",
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+    // The cheapest model: a short summary needs nothing more.
+    response = await client.messages.create({
+      model: "claude-haiku-5-5",
+      max_tokens: 8000,
       output_config: {
-        effort: "high",
+        effort: "low",
         format: { type: "json_schema", schema: OUTPUT_SCHEMA },
       },
       system: SYSTEM,
