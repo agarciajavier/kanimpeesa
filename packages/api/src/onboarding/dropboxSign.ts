@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { dbClient } from "@kan/db/client";
 import { onboardingClients, onboardingSubmissions } from "@kan/db/schema";
 
-import { tycFieldJob } from "./handlers";
+import { TYC_PDF_JOB, tycFieldJob } from "./handlers";
 import { enqueueJob } from "./queue";
 
 // Impeesa onboarding: Dropbox Sign's notices about the terms and conditions.
@@ -137,5 +137,20 @@ export async function recordSignEvent(
     onboardingClientId: client.id,
     kind: tycFieldJob(option),
   });
+  // Everyone signed: the signed PDF to the client's folder, once per request.
+  const requestId = event.signature_request?.signature_request_id;
+  const type = event.event?.event_type;
+  if (
+    option === "Firmados por todos" &&
+    requestId &&
+    (type === "signature_request_all_signed" ||
+      type === "signature_request_downloadable")
+  )
+    await enqueueJob(db, {
+      onboardingClientId: client.id,
+      kind: TYC_PDF_JOB,
+      dedupKey: `${client.id}:${TYC_PDF_JOB}:${requestId}`,
+      maxAttempts: 8,
+    });
   return { outcome: "recorded", option };
 }

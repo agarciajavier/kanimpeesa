@@ -175,3 +175,49 @@ export function asJobError(error: unknown): Error {
       : new PermanentError(error.message);
   return error instanceof Error ? error : new Error(String(error));
 }
+
+// Uploads a file (bytes) to a Drive folder and returns its id. Same error
+// handling as googleApi.
+export async function googleUpload(
+  folderId: string,
+  name: string,
+  mimeType: string,
+  bytes: Uint8Array,
+): Promise<{ id: string }> {
+  const token = await accessToken();
+  const boundary = `impeesa${Date.now().toString(36)}`;
+  const metadata = JSON.stringify({ name, mimeType, parents: [folderId] });
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+    ),
+    Buffer.from(bytes),
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+  let response: Response;
+  try {
+    response = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+        },
+        body,
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+  } catch (error) {
+    throw new RetryableError(`Google no respondió: ${String(error)}`);
+  }
+  if (response.status === 401) cachedToken = null;
+  const text = await response.text();
+  if (!response.ok)
+    throw new GoogleApiError(
+      response.status,
+      "",
+      `Google ${response.status}: ${text.slice(0, 300)}`,
+    );
+  return JSON.parse(text) as { id: string };
+}

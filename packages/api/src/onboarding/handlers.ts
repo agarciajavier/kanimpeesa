@@ -32,6 +32,7 @@ import { sendTracked } from "./emails";
 import { PermanentError, RetryableError } from "./errors";
 import { enqueueJob, registerHandler } from "./queue";
 import { panelReference, writeClientRow } from "./sheet";
+import { saveSignedPdf } from "./signedPdf";
 import {
   answerText,
   STRATEGIC_SECTIONS,
@@ -217,6 +218,24 @@ for (const [optionName, onlyFrom] of Object.entries(TYC_STEPS))
       result: await setCardField(db, client, TYC_FIELD, optionName, onlyFrom),
     };
   });
+
+// Once everyone signed, the signed PDF goes to the client's folder. The
+// Dropbox Sign request id travels in the job's key
+// (<client>:tyc_pdf:<request id>).
+export const TYC_PDF_JOB = "tyc_pdf";
+registerHandler(TYC_PDF_JOB, async (db, job) => {
+  const client = await loadClient(db, job.onboardingClientId);
+  const requestId = job.dedupKey.split(":").pop() ?? "";
+  if (!client.driveFolderId)
+    throw new RetryableError("La carpeta del cliente todavía no está creada");
+  const admin = await loadAdminAnswers(db, client.id);
+  const saved = await saveSignedPdf(
+    client.driveFolderId,
+    admin.nombreFantasia,
+    requestId,
+  );
+  return { result: { ...saved, requestId } };
+});
 
 // --- Welcome email (template D5) ------------------------------------------
 
