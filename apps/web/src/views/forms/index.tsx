@@ -4,6 +4,8 @@ import { es } from "date-fns/locale";
 import { useState } from "react";
 import { HiArrowPath, HiPlus } from "react-icons/hi2";
 
+import { SERVICES } from "@kan/api/onboarding/adminForm";
+
 import type { RouterOutputs } from "~/utils/api";
 import Button from "~/components/Button";
 import { PageHead } from "~/components/PageHead";
@@ -24,6 +26,13 @@ const emailFieldKinds = (emailKind: string) =>
   ["Entregado", "Abierto", "Rebotó"].map(
     (option) => `email_field:${emailKind}:${option}`,
   );
+
+// The card's "Términos y condiciones", following Dropbox Sign's notices.
+const TYC_OPTIONS = [
+  "Enviados para firmar",
+  "Pendiente firma del cliente",
+  "Firmados por todos",
+];
 
 const STEPS: { label: string; kinds: string[] }[] = [
   {
@@ -53,6 +62,14 @@ const STEPS: { label: string; kinds: string[] }[] = [
   {
     label: "Brief de marca",
     kinds: ["brief_summary", "brief_doc", "field:brief_done"],
+  },
+  {
+    label: "Términos y condiciones",
+    kinds: [
+      "tyc_doc",
+      "tyc_pdf",
+      ...TYC_OPTIONS.map((option) => `tyc_field:${option}`),
+    ],
   },
 ];
 
@@ -136,6 +153,14 @@ function stepDetail(label: string, client: OnboardingClient, jobs: Job[]) {
     const r = done("brief_doc")?.result as { url?: string } | undefined;
     return r?.url ? "Documento en la carpeta" : null;
   }
+  if (label === "Términos y condiciones") {
+    if (done("tyc_pdf")) return "Firmados por todos · PDF en la carpeta";
+    const signing = [...TYC_OPTIONS]
+      .reverse()
+      .find((option) => done(`tyc_field:${option}`));
+    if (signing) return signing;
+    return done("tyc_doc") ? "Generados, falta mandarlos a firmar" : null;
+  }
   if (label === "Compartido") {
     const r = done("drive_share")?.result as
       | { access?: string; email?: string }
@@ -159,6 +184,13 @@ const emailNotReceived = (label: string, client: OnboardingClient) => {
   return ["bounced", "complained", "failed"].includes(email?.status ?? "");
 };
 
+const termsUrl = (client: OnboardingClient) => {
+  const job = client.jobs.find(
+    (j) => j.kind === "tyc_doc" && j.status === "done",
+  );
+  return (job?.result as { url?: string } | null)?.url ?? null;
+};
+
 const briefUrl = (client: OnboardingClient) => {
   const job = client.jobs.find(
     (j) => j.kind === "brief_doc" && j.status === "done",
@@ -167,6 +199,7 @@ const briefUrl = (client: OnboardingClient) => {
 };
 
 function ClientCard({ client }: { client: OnboardingClient }) {
+  const [termsOpen, setTermsOpen] = useState(false);
   const utils = api.useUtils();
   const { showPopup } = usePopup();
   const retry = api.onboarding.retry.useMutation({
@@ -232,6 +265,25 @@ function ClientCard({ client }: { client: OnboardingClient }) {
           >
             Ficha estratégica
           </a>
+          {termsUrl(client) && (
+            <a
+              className="underline"
+              href={termsUrl(client) ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Términos
+            </a>
+          )}
+          {client.driveFolderUrl && client.adminSubmittedAt && (
+            <button
+              type="button"
+              className="underline"
+              onClick={() => setTermsOpen((open) => !open)}
+            >
+              Generar términos
+            </button>
+          )}
           {briefUrl(client) && (
             <a
               className="underline"
@@ -335,7 +387,220 @@ function ClientCard({ client }: { client: OnboardingClient }) {
           );
         })}
       </ul>
+
+      {termsOpen && (
+        <TermsForm client={client} onDone={() => setTermsOpen(false)} />
+      )}
     </div>
+  );
+}
+
+const inputClass =
+  "w-full rounded-md border-0 bg-white/5 px-3 py-1.5 text-sm shadow-sm ring-1 ring-inset ring-light-600 focus:ring-2 focus:ring-inset focus:ring-light-700 dark:bg-dark-300 dark:text-dark-1000 dark:ring-dark-700";
+
+type Service = (typeof SERVICES)[number];
+
+// "Generar términos": the client's terms and conditions from the template,
+// prefilled with the initial form. Ángel reviews the document and sends it
+// for signature himself.
+function TermsForm({
+  client,
+  onDone,
+}: {
+  client: OnboardingClient;
+  onDone: () => void;
+}) {
+  const [service, setService] = useState<Service>(
+    (client.servicio as Service | null) ?? SERVICES[0],
+  );
+  const [razonSocial, setRazonSocial] = useState(client.razonSocial ?? "");
+  const [cuit, setCuit] = useState(client.cuit ?? "");
+  const [nombreFantasia, setNombreFantasia] = useState(client.business ?? "");
+  const [honorario, setHonorario] = useState("");
+  const [mesValores, setMesValores] = useState(
+    format(new Date(), "MMMM 'de' yyyy", { locale: es }),
+  );
+  const [incluyeDiseno, setIncluyeDiseno] = useState(false);
+  const [notas, setNotas] = useState("");
+  const [url, setUrl] = useState<string | null>(null);
+  const utils = api.useUtils();
+  const { showPopup } = usePopup();
+  const isManagement = !service.startsWith("Asesoría");
+  const amount = Number(honorario.replace(/\D/g, ""));
+
+  const generate = api.onboarding.generateTerms.useMutation({
+    onSuccess: async (data, variables) => {
+      if (data.conflict) {
+        if (
+          window.confirm(
+            "Este cliente ya tiene un documento de términos en su carpeta. ¿Reemplazarlo? El anterior va a la papelera de Drive.",
+          )
+        )
+          generate.mutate({ ...variables, replace: true });
+        return;
+      }
+      setUrl(data.url);
+      await utils.onboarding.list.invalidate();
+    },
+    onError: (error) =>
+      showPopup({
+        header: "No se pudieron generar los términos",
+        message: error.message,
+        icon: "error",
+      }),
+  });
+
+  if (url)
+    return (
+      <div className="mt-4 rounded-md border border-green-300 p-3 text-sm dark:border-green-800">
+        <p className="text-neutral-900 dark:text-dark-1000">
+          Listo: el documento está en la carpeta del cliente.{" "}
+          <a className="underline" href={url} target="_blank" rel="noreferrer">
+            Abrir los términos
+          </a>
+        </p>
+        <p className="mt-1 text-xs text-light-900 dark:text-dark-900">
+          Revisalo y mandalo a firmar con la extensión de Dropbox Sign. La
+          tarjeta se va a ir moviendo sola con las firmas.
+        </p>
+        <div className="mt-2">
+          <Button type="button" size="sm" variant="secondary" onClick={onDone}>
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    );
+
+  const label = "text-xs text-light-900 dark:text-dark-900";
+  return (
+    <form
+      className="mt-4 rounded-md border border-light-300 p-3 dark:border-dark-300"
+      onSubmit={(e) => {
+        e.preventDefault();
+        generate.mutate({
+          publicId: client.publicId,
+          service,
+          razonSocial,
+          cuit,
+          nombreFantasia,
+          honorario: amount,
+          mesValores,
+          incluyeDiseno: isManagement && incluyeDiseno,
+          notas,
+          replace: false,
+        });
+      }}
+    >
+      <p className="mb-3 text-sm font-medium text-neutral-900 dark:text-dark-1000">
+        Generar términos y condiciones
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={`${label} sm:col-span-2`}>
+          Servicio (lo que eligió el cliente; corregilo si se equivocó)
+          <select
+            className={`mt-1 ${inputClass}`}
+            value={service}
+            onChange={(e) => setService(e.target.value as Service)}
+          >
+            {SERVICES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={label}>
+          Razón social
+          <input
+            className={`mt-1 ${inputClass}`}
+            value={razonSocial}
+            onChange={(e) => setRazonSocial(e.target.value)}
+            required
+            maxLength={255}
+          />
+        </label>
+        <label className={label}>
+          CUIT
+          <input
+            className={`mt-1 ${inputClass}`}
+            value={cuit}
+            onChange={(e) => setCuit(e.target.value)}
+            required
+            maxLength={20}
+          />
+        </label>
+        <label className={label}>
+          Nombre de fantasía
+          <input
+            className={`mt-1 ${inputClass}`}
+            value={nombreFantasia}
+            onChange={(e) => setNombreFantasia(e.target.value)}
+            required
+            maxLength={255}
+          />
+        </label>
+        <label className={label}>
+          Honorario mensual (pesos, sin IVA)
+          <input
+            className={`mt-1 ${inputClass}`}
+            inputMode="numeric"
+            placeholder="1.900.000"
+            value={honorario}
+            onChange={(e) => setHonorario(e.target.value)}
+            required
+          />
+        </label>
+        <label className={label}>
+          Expresado a valores de
+          <input
+            className={`mt-1 ${inputClass}`}
+            value={mesValores}
+            onChange={(e) => setMesValores(e.target.value)}
+            required
+            maxLength={40}
+          />
+        </label>
+        {isManagement && (
+          <label className={`${label} flex items-center gap-2 self-end`}>
+            <input
+              type="checkbox"
+              checked={incluyeDiseno}
+              onChange={(e) => setIncluyeDiseno(e.target.checked)}
+            />
+            Incluye diseño de piezas
+          </label>
+        )}
+        <label className={`${label} sm:col-span-2`}>
+          Condiciones particulares (opcional: escribilas como te salgan y la IA
+          las redacta; si lo dejás vacío no se agrega nada)
+          <textarea
+            className={`mt-1 ${inputClass}`}
+            rows={3}
+            value={notas}
+            onChange={(e) => setNotas(e.target.value)}
+            maxLength={3000}
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          isLoading={generate.isPending}
+          disabled={!amount}
+        >
+          Generar documento
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onDone}>
+          Cancelar
+        </Button>
+      </div>
+      {generate.isPending && (
+        <p className="mt-2 text-xs text-light-900 dark:text-dark-900">
+          Armando el documento… puede tardar unos segundos.
+        </p>
+      )}
+    </form>
   );
 }
 

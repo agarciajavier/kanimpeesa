@@ -20,16 +20,20 @@ import { enqueueJob, formLink, retryJob, strategicLink } from "../onboarding";
 import {
   ADMIN_FORM_VERSION,
   adminAnswersSchema,
+  SERVICES,
 } from "../onboarding/adminForm";
+import { draftParticularConditions } from "../onboarding/ai";
 import {
   isLiveMode,
   ONBOARDING_NEW_CLIENT_LIST_PUBLIC_ID,
 } from "../onboarding/config";
+import { describeError } from "../onboarding/errors";
 import {
   STRATEGIC_FORM_VERSION,
   strategicAnswersSchema,
   strategicDraftSchema,
 } from "../onboarding/strategicForm";
+import { findTermsDoc, writeTermsDoc } from "../onboarding/terms";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { assertPermission } from "../utils/permissions";
 
@@ -147,6 +151,10 @@ export const onboardingRouter = createTRPCRouter({
           cliCode: c.cliCode,
           business: answers?.nombreFantasia ?? null,
           contactEmail: answers?.correoContacto ?? null,
+          // To prefill "Generar términos".
+          razonSocial: answers?.razonSocial ?? null,
+          cuit: answers?.cuit ?? null,
+          servicio: answers?.servicio ?? null,
           driveFolderUrl: c.driveFolderUrl,
           cardPublicId:
             clientCards.find((card) => card.id === c.cardId)?.publicId ?? null,
@@ -276,6 +284,106 @@ export const onboardingRouter = createTRPCRouter({
           code: "BAD_REQUEST",
         });
       return { ok: true };
+    }),
+
+  // The client's terms and conditions, as a Google Doc in their folder, from
+  // the template. Ángel reviews it and sends it for signature himself.
+  generateTerms: protectedProcedure
+    .input(
+      z.object({
+        publicId: z.string().length(12),
+        service: z.enum(SERVICES),
+        razonSocial: z.string().trim().min(1).max(255),
+        cuit: z.string().trim().min(1).max(20),
+        nombreFantasia: z.string().trim().min(1).max(255),
+        honorario: z.number().int().min(1).max(999_999_999),
+        mesValores: z.string().trim().min(3).max(40),
+        incluyeDiseno: z.boolean(),
+        notas: z.string().trim().max(3000),
+        replace: z.boolean().default(false),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = requireUser(ctx.user?.id);
+      const client = await ctx.db.query.onboardingClients.findFirst({
+        where: and(
+          eq(onboardingClients.publicId, input.publicId),
+          isNull(onboardingClients.deletedAt),
+        ),
+      });
+      if (!client)
+        throw new TRPCError({
+          message: "No existe ese cliente",
+          code: "NOT_FOUND",
+        });
+      await assertPermission(ctx.db, userId, client.workspaceId, "card:create");
+      if (!client.driveFolderId)
+        throw new TRPCError({
+          message:
+            "El cliente todavía no tiene carpeta: primero tiene que completar la ficha inicial",
+          code: "PRECONDITION_FAILED",
+        });
+
+      try {
+        // Asked before spending anything.
+        if (
+          !input.replace &&
+          (await findTermsDoc(client.driveFolderId, input.nombreFantasia))
+        )
+          return { conflict: true as const };
+
+        const condiciones = input.notas
+          ? await draftParticularConditions(input.notas, {
+              business: input.nombreFantasia,
+              service: input.service,
+            })
+          : "";
+        const doc = await writeTermsDoc(
+          client.driveFolderId,
+          {
+            service: input.service,
+            razonSocial: input.razonSocial,
+            cuit: input.cuit,
+            nombreFantasia: input.nombreFantasia,
+            honorario: input.honorario,
+            mesValores: input.mesValores,
+            incluyeDiseno: input.incluyeDiseno,
+            condicionesParticulares: condiciones,
+          },
+          { replace: input.replace },
+        );
+        if (doc.conflict) return { conflict: true as const };
+
+        // Kept as a finished step, so Forms shows the link.
+        const result = {
+          url: doc.url,
+          name: doc.name,
+          service: input.service,
+          honorario: input.honorario,
+        };
+        await ctx.db
+          .insert(onboardingJobs)
+          .values({
+            onboardingClientId: client.id,
+            kind: "tyc_doc",
+            dedupKey: `${client.id}:tyc_doc`,
+            status: "done",
+            attempts: 1,
+            result,
+            doneAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: onboardingJobs.dedupKey,
+            set: { result, doneAt: new Date(), updatedAt: new Date() },
+          });
+        return { conflict: false as const, url: doc.url };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          message: `No se pudieron generar los términos: ${describeError(error)}`,
+          code: "INTERNAL_SERVER_ERROR",
+        });
+      }
     }),
 
   // --- Public: the client's form link (/f/<token>) ------------------------

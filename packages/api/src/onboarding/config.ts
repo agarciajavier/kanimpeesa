@@ -14,6 +14,12 @@ export const REAL_SHEET_ID = "1bjaS_5Oqklymyy_lPwHYpvrdQt674ORm7ukTazyTQ-0";
 export const REAL_CLIENTS_FOLDER_ID = "1wTXRm6zm5PAhK9bFqMmctgpr2Gsbagvg";
 
 export const TEMPLATE_TAB = "Control automatización";
+// The terms and conditions templates (copies of Ángel's documents with
+// {{MARKERS}} where each client's data goes), in "Plantillas TyC del panel".
+export const TERMS_TEMPLATES = {
+  gestion: "1ZRJ-mL8KzfoS4NfzMOJFc9Jezu-o54gDuh_ixRJQmP4",
+  asesoria: "1I6uoxAXPspAQCUcDD7NwzG31pCA-45lVs_8C_NmhQIg",
+} as const;
 export const WELCOME_TEMPLATE_CELL = "D5";
 export const ONBOARDING_TEMPLATE_CELL = "D6";
 export const CLIENTS_TAB = "Clientes";
